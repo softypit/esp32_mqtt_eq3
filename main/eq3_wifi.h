@@ -2,12 +2,15 @@
 #ifndef EQ3_WIFI_H
 #define EQ3_WIFI_H
 
+#define EQ3_MAJVER "1"
+#define EQ3_MINVER "10"
+
 void initialise_wifi(void);
 
 int send_device_list(char *list);
 int send_trv_status(char *status);
 
-int connect_server(char *url, char *user, char *password);
+int connect_server(char *url, char *user, char *password, char *id);
 
 /* This shouldn't be here!! */
 int handle_request(char *cmdstr);

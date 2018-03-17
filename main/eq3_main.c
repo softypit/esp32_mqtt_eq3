@@ -45,8 +45,39 @@
 #include "eq3_bootwifi.h"
 
 #define GATTC_TAG "EQ3_MAIN"
+#define INVALID_HANDLE   0
 
 #define EQ3_DISCONNECT 0
+#define START_WIFI     1
+#define RESTART_WIFI   2
+
+/* Request ids for TRV */
+#define PROP_ID_QUERY            0x00
+#define PROP_ID_RETURN           0x01
+#define PROP_INFO_RETURN         0x02
+#define PROP_INFO_QUERY          0x03
+#define PROP_COMFORT_ECO_CONFIG  0x11
+#define PROP_OFFSET              0x13
+#define PROP_WINDOW_OPEN_CONFIG  0x14
+#define PROP_SCHEDULE_QUERY      0x20
+#define PROP_SCHEDULE_RETURN     0x21
+#define PROP_MODE_WRITE          0x40
+#define PROP_TEMPERATURE_WRITE   0x41
+#define PROP_COMFORT             0x43
+#define PROP_ECO                 0x44
+#define PROP_BOOST               0x45
+#define PROP_LOCK                0x80
+
+/* Status bits */
+#define AUTO                     0x00
+#define MANUAL                   0x01
+#define AWAY                     0x02
+#define BOOST                    0x04
+#define DST                      0x08
+#define WINDOW                   0x10
+#define LOCKED                   0x20
+#define UNKNOWN                  0x40
+#define LOW_BATTERY              0x80
 
 /* Allow delay of next GATTC command */
 struct tmrcmd{
@@ -55,13 +86,17 @@ struct tmrcmd{
     int countdown;
 };
 
+#define runtimer() start_timer(1000)
+
+bool wifistartdelay = true;
+
 struct tmrcmd nextcmd;
 
 int setnextcmd(int cmd, int time_s){
     if(nextcmd.running != true){
         nextcmd.cmd = cmd;
-	nextcmd.countdown = time_s;
-	nextcmd.running = true;
+	    nextcmd.countdown = time_s;
+	    nextcmd.running = true;
     }else{
         ESP_LOGI(GATTC_TAG, "setnextcmd when timer running!");
     }
@@ -92,6 +127,11 @@ static esp_gatt_id_t eq3_char_id = {
     .inst_id = 0,
 };
 
+static esp_bt_uuid_t eq3_filter_char_uuid = {
+    .len = ESP_UUID_LEN_128,
+    .uuid = {.uuid128 = {0x09, 0xea, 0x79, 0x81, 0xdf, 0xb8, 0x4b, 0xdb, 0xad, 0x3b, 0x4a, 0xce, 0x5a, 0x58, 0xa4, 0x3f},},
+};
+
 /* EQ-3 characteristic used to notify settings from trv in response to parameter set */
 static esp_gatt_id_t eq3_resp_char_id = {
     .uuid = {
@@ -101,12 +141,29 @@ static esp_gatt_id_t eq3_resp_char_id = {
     .inst_id = 0,
 };
 
+static esp_bt_uuid_t eq3_resp_filter_char_uuid = {
+    .len = ESP_UUID_LEN_128,
+    .uuid = {.uuid128 = {0x2a, 0xeb, 0xe0, 0xf4, 0x90, 0x6c, 0x41, 0xaf, 0x96, 0x09, 0x29, 0xcd, 0x4d, 0x43, 0xe8, 0xd0},},
+};
+
+//static esp_bt_uuid_t notify_descr_uuid = {
+//    .len = ESP_UUID_LEN_16,
+//    .uuid = {.uuid16 = ESP_GATT_UUID_CHAR_CLIENT_CONFIG,},
+//};
+
 /* Current TRV command being sent to EQ-3 */ 
 uint16_t cmd_len = 0;
 uint8_t cmd_val[10] = {0};
 esp_bd_addr_t cmd_bleda;   /* BLE Device Address */
 
 static bool get_server = false;
+
+static esp_gattc_char_elem_t elemres;
+static esp_gattc_char_elem_t *char_elem_result = &elemres;
+
+//static esp_gattc_descr_elem_t descres;
+//static esp_gattc_descr_elem_t *descr_elem_result = &descres;
+
 static bool registered = false;
 
 /* Name reported by EQ-3 valves when scanning */
@@ -121,6 +178,10 @@ struct gattc_profile_inst {
     uint16_t gattc_if;
     uint16_t app_id;
     uint16_t conn_id;
+    uint16_t service_start_handle;
+    uint16_t service_end_handle;
+    uint16_t char_handle;
+    uint16_t resp_char_handle;
     esp_bd_addr_t remote_bda;
 };
 
@@ -131,6 +192,50 @@ static struct gattc_profile_inst gl_profile_tab[PROFILE_NUM] = {
         .gattc_if = ESP_GATT_IF_NONE,       /* Not get the gatt_if, so initial is ESP_GATT_IF_NONE */
     },
 };
+
+static void gattc_command_error(esp_bd_addr_t bleda, char *error){
+    char statrep[120];
+    int statidx = 0;
+
+    statidx += sprintf(&statrep[statidx], "{");
+    statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
+    statidx += sprintf(&statrep[statidx], "\"error\":\"%s\"}", error);
+    statidx += sprintf(&statrep[statidx], "}");
+    send_trv_status(statrep);
+
+    /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
+    setnextcmd(EQ3_DISCONNECT, 2);
+    runtimer();
+}
+
+#ifdef removed
+/* Sort the mqtt error queueing !! */
+struct response_q_entry {
+    char *msg;
+    struct response_q_entry *next;
+};
+
+static struct response_q_entry *respq;
+
+static void mqtt_command_error(esp_bd_addr_t bleda, char *error){
+    char statrep = malloc(120);
+    struct response_q_entry *respqentry = malloc(sizeof(struct response_q_entry));
+    int statidx = 0;
+
+    respqentry->msg = statrep;
+    respqentry->next = NULL;
+
+    statidx += sprintf(statrep[statidx], "{");
+    statidx += sprintf(statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
+    statidx += sprintf(statrep[statidx], "\"error\":\"%s\"}", error);
+    statidx += sprintf(statrep[statidx], "}");
+
+
+    send_trv_status(statrep);
+
+    runtimer();
+}
+#endif
 
 /* Callback function to handle GATT-Client events */ 
 /* While we've discovered the EQ-3 devices with the GAP handler we need to check the service we want is available when we connect
@@ -147,20 +252,25 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     esp_ble_gattc_cb_param_t *p_data = (esp_ble_gattc_cb_param_t *)param;
 
     switch (event) {
+    /* GATT Client registration */
     case ESP_GATTC_REG_EVT:
         /* Registered */
         ESP_LOGI(GATTC_TAG, "REG_EVT");
-	registered = true;
+        registered = true;
+        gl_profile_tab[PROFILE_A_APP_ID].char_handle = 0;
+        gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle = 0;
         break;
     case ESP_GATTC_UNREG_EVT:
         /* Unregistered */
         ESP_LOGI(GATTC_TAG, "UNREG_EVT");
-	registered = false;
-	esp_err_t ret = esp_ble_gattc_app_register(PROFILE_A_APP_ID);
-	if(ret){
+        registered = false;
+        esp_err_t ret = esp_ble_gattc_app_register(PROFILE_A_APP_ID);
+	    if(ret){
             ESP_LOGE(GATTC_TAG, "%s gattc app register failed, error code = %x\n", __func__, ret);
         }
         break;
+        
+    /* GATT Client connection to server */
     case ESP_GATTC_CONNECT_EVT:
         /* GATT Client connected to server(EQ-3) */
         //p_data->connect.status always be ESP_GATT_OK
@@ -170,9 +280,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         memcpy(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, p_data->connect.remote_bda, sizeof(esp_bd_addr_t));
         ESP_LOGI(GATTC_TAG, "REMOTE BDA:");
         esp_log_buffer_hex(GATTC_TAG, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, sizeof(esp_bd_addr_t));
-        
-	ESP_LOGE(GATTC_TAG, "RQ set mtu");
-	esp_err_t mtu_ret = esp_ble_gattc_config_mtu (gattc_if, conn_id, 200);
+        esp_err_t mtu_ret = esp_ble_gattc_send_mtu_req(gattc_if, conn_id);
         if (mtu_ret){
             ESP_LOGE(GATTC_TAG, "config MTU error, error code = %x", mtu_ret);
         }
@@ -180,7 +288,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     case ESP_GATTC_OPEN_EVT:
         /* Profile connection opened */
         if (param->open.status != ESP_GATT_OK){
-            ESP_LOGE(GATTC_TAG, "open failed, status %d", p_data->open.status);
+            ESP_LOGE(GATTC_TAG, "open failed, status %d", p_data->open.status); 
+            gattc_command_error(cmd_bleda, "TRV not available");
             break;
         }
         ESP_LOGI(GATTC_TAG, "open success");
@@ -188,54 +297,59 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     case ESP_GATTC_CLOSE_EVT:
         /* Profile connection closed */
         if(param->close.status != ESP_GATT_OK){
-	    ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
-	}else{
-	    ESP_LOGI(GATTC_TAG, "close success");
-	}
-	/* Wait before we connect to the next EQ-3 to send a queued command */
-	start_timer(1000);
+	        ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
+	    }else{
+	        ESP_LOGI(GATTC_TAG, "close success");
+	    }
+	    /* Wait before we connect to the next EQ-3 to send a queued command */
+	    runtimer();
         break;
     case ESP_GATTC_CFG_MTU_EVT:
         /* MTU has been set */
         if (param->cfg_mtu.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG,"config mtu failed, error status = %x", param->cfg_mtu.status);
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+            break;
         }
-        
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_CFG_MTU_EVT, Status %d, MTU %d, conn_id %d", param->cfg_mtu.status, param->cfg_mtu.mtu, param->cfg_mtu.conn_id);
-        
-	/* Search for the EQ-3 service we want */
-	esp_ble_gattc_search_service(gattc_if, param->cfg_mtu.conn_id, NULL);
+	    /* Search for the EQ-3 service */
+	    esp_ble_gattc_search_service(gattc_if, param->cfg_mtu.conn_id, NULL);
 	
         break;
     case ESP_GATTC_SEARCH_RES_EVT: {
-        esp_gatt_srvc_id_t *srvc_id = &p_data->search_res.srvc_id;
+        /* Search result is in */
+        esp_gatt_srvc_id_t *srvc_id =(esp_gatt_srvc_id_t *)&p_data->search_res.srvc_id;
         conn_id = p_data->search_res.conn_id;
-	if (srvc_id->id.uuid.len == ESP_UUID_LEN_32){
-	  /* Ignore this service */
-	  ESP_LOGI(GATTC_TAG, "Got UUID32: %x", srvc_id->id.uuid.uuid.uuid32);
-	}else if (srvc_id->id.uuid.len == ESP_UUID_LEN_16){
-	  /* Ignore this service */
-	  ESP_LOGI(GATTC_TAG, "Got UUID16: %x", srvc_id->id.uuid.uuid.uuid16);
-	}else if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
-	  /* Check if the service identifier is the one we're interested in */
-	  char printstr[ESP_UUID_LEN_128 * 2 + 1];
-	  int bytecount, writecount = 0;
-	  for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
-	    sprintf(&printstr[writecount], "%02x", srvc_id->id.uuid.uuid.uuid128[bytecount] & 0xff);
-	  ESP_LOGI(GATTC_TAG, "Got UUID128: %s", printstr);
-	}
+#ifdef removed        
+        if (srvc_id->id.uuid.len == ESP_UUID_LEN_32){
+          /* Ignore this service */
+          ESP_LOGI(GATTC_TAG, "Got UUID32: %x", srvc_id->id.uuid.uuid.uuid32);
+        }else if (srvc_id->id.uuid.len == ESP_UUID_LEN_16){
+          /* Ignore this service */
+          ESP_LOGI(GATTC_TAG, "Got UUID16: %x", srvc_id->id.uuid.uuid.uuid16);
+        }else if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
+          /* Check if the service identifier is the one we're interested in */
+          char printstr[ESP_UUID_LEN_128 * 2 + 1];
+          int bytecount, writecount = 0;
+          for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
+            sprintf(&printstr[writecount], "%02x", srvc_id->id.uuid.uuid.uuid128[bytecount] & 0xff);
+            ESP_LOGI(GATTC_TAG, "Got UUID128: %s", printstr);
+        }
+#endif        
         if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
-	  int checkcount;
-	  for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-	    if(srvc_id->id.uuid.uuid.uuid128[checkcount] != eq3_service_id.id.uuid.uuid.uuid128[checkcount]){
-	      checkcount = -1;
-	      break;
-	    }
-	  }
-	  if(checkcount == ESP_UUID_LEN_128) {
+          int checkcount;
+          for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
+            if(srvc_id->id.uuid.uuid.uuid128[checkcount] != eq3_service_id.id.uuid.uuid.uuid128[checkcount]){
+              checkcount = -1;
+              break;
+            }
+          }
+          if(checkcount == ESP_UUID_LEN_128) {
             get_server = true;
             ESP_LOGI(GATTC_TAG, "Found EQ-3");
-	  }
+            gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
+            gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
+          }
         }
         break;
     }
@@ -243,133 +357,222 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* Search is complete */
         if (p_data->search_cmpl.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "search service failed, error status = %x", p_data->search_cmpl.status);
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
             break;
         }
-        ESP_LOGI(GATTC_TAG, "Search Complete - get characteristic");
-        conn_id = p_data->search_cmpl.conn_id;
+        ESP_LOGI(GATTC_TAG, "Search Complete - get req characteristics");
         if (get_server){
-	    ESP_LOGE(GATTC_TAG, "RQ notify");
-	    esp_ble_gattc_register_for_notify(gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, &eq3_service_id, &eq3_resp_char_id);
+            uint16_t count = 0;
+            esp_gatt_status_t status = esp_ble_gattc_get_attr_count( gattc_if, p_data->search_cmpl.conn_id, ESP_GATT_DB_CHARACTERISTIC, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
+                                                                     gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, INVALID_HANDLE, &count);
+            if (status != ESP_GATT_OK){
+                ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error");
+            }      
+            if (count > 0){
+                uint16_t count2 = 1;
+                ESP_LOGI(GATTC_TAG, "%d attributes reported", count);
+                    
+                /* Get the response characteristic handle */
+                status = esp_ble_gattc_get_char_by_uuid( gattc_if, p_data->search_cmpl.conn_id, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
+                                                         gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, eq3_resp_filter_char_uuid, char_elem_result, &count2);
+                if (status != ESP_GATT_OK){
+                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_char_by_uuid error");
+                }
+                /*  We should only get a single result from our filter */
+                if (count2 > 0){
+                    uint16_t charwalk;
+                    ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
+                    for(charwalk = 0; charwalk < count; charwalk++){
+                        if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
+                            int checkcount;
+                                
+                                /* Check if the service identifier is the one we're interested in */
+                                char printstr[ESP_UUID_LEN_128 * 2 + 1];
+                                int bytecount, writecount = 0;
+                                for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
+                                    sprintf(&printstr[writecount], "%02x", char_elem_result[charwalk].uuid.uuid.uuid128[bytecount] & 0xff);
+                                ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, printstr);
+                                
+                            /* Is this the response characteristic */
+                            for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
+                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_resp_char_id.uuid.uuid.uuid128[checkcount]){
+                                    checkcount = -1;
+                                    break;
+                                }
+                            }
+                            if(checkcount == ESP_UUID_LEN_128 && char_elem_result[charwalk].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY) {
+                                ESP_LOGI(GATTC_TAG, "eq-3 got resp id handle");
+                                gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle = char_elem_result[charwalk].char_handle;
+                                continue;
+                            }
+                        }
+                    }
+                    /* If we got the response characteristic register for notifications */
+                    if(gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle != 0){
+                        esp_ble_gattc_register_for_notify (gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle);
+                    }
+                }else{
+                    ESP_LOGE(GATTC_TAG, "No notification attribute found!");
+                }
+
+                count2 = 1;
+                /* Get the command characteristic handle */
+                status = esp_ble_gattc_get_char_by_uuid( gattc_if, p_data->search_cmpl.conn_id, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
+                                                         gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, eq3_filter_char_uuid, char_elem_result, &count2);
+                if (status != ESP_GATT_OK){
+                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_char_by_uuid error");
+                }
+                /*  We should only get a single result from our filter */
+                if (count2 > 0){
+                    uint16_t charwalk;
+                    ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
+                    for(charwalk = 0; charwalk < count; charwalk++){                            
+                        if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
+                            int checkcount;
+                            /* Check if the service identifier is the one we're interested in */
+                            char printstr[ESP_UUID_LEN_128 * 2 + 1];
+                            int bytecount, writecount = 0;
+                            for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
+                                sprintf(&printstr[writecount], "%02x", char_elem_result[charwalk].uuid.uuid.uuid128[bytecount] & 0xff);
+                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, printstr);
+                            
+                            /* Is this the command characteristic */
+                            for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
+                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_char_id.uuid.uuid.uuid128[checkcount]){
+                                    checkcount = -1;
+                                    break;
+                                }
+                            }
+                            if(checkcount == ESP_UUID_LEN_128) {
+                                ESP_LOGI(GATTC_TAG, "eq-3 got cmd id handle");
+                                gl_profile_tab[PROFILE_A_APP_ID].char_handle = char_elem_result[charwalk].char_handle;
+                                continue;
+                            }
+                        }
+                    }
+                }else{
+                    ESP_LOGE(GATTC_TAG, "No command attribute found!");
+                }
+                    
+            }else{
+                ESP_LOGE(GATTC_TAG, "EQ-3 characteristics not found");
+                gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+                break;
+            }
         }else{
-	    ESP_LOGE(GATTC_TAG, "EQ-3 service not available from this server!");
-	    /* Wait 2 seconds for background GATTC operations then disconnect */
-	    setnextcmd(EQ3_DISCONNECT, 2);
-	    start_timer(1000);
-	}
-        break;
-#ifdef removed	
-    case ESP_GATTC_GET_CHAR_EVT:
-        if (p_data->get_char.status != ESP_GATT_OK) {
-            ESP_LOGE(GATTC_TAG, "get char failed, error status = %x", p_data->get_char.status);
+            ESP_LOGE(GATTC_TAG, "EQ-3 service not available from this server!");
+            /* Wait 2 seconds for background GATTC operations then disconnect */
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
             break;
         }
-        ESP_LOGI(GATTC_TAG, "get char success");
-        ESP_LOGI(GATTC_TAG, "GET CHAR: srvc_id = %04x, char_id = %04x", p_data->get_char.srvc_id.id.uuid.uuid.uuid16, p_data->get_char.char_id.uuid.uuid.uuid16);
-
-        //if (p_data->get_char.char_id.uuid.uuid.uuid16 == REMOTE_NOTIFY_CHAR_UUID) {
-            esp_ble_gattc_register_for_notify(gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, &eq3_service_id, &p_data->get_char.char_id);
-        //}
-
-        //esp_ble_gattc_get_characteristic(gattc_if, conn_id, &gatt_server_demo_service_id, &p_data->get_char.char_id);
-	
-	//uint16_t boost_len = 4;
-        //uint8_t boost_val[] = "4501";
-	//ESP_LOGI(GATTC_TAG, "Set eq3 boost");
-	//esp_ble_gattc_write_char(gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, &eq3_service_id, &p_data->get_char.char_id, boost_len, boost_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
         break;
-#endif	
+	
     case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
         if (p_data->reg_for_notify.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "REG FOR NOTIFY failed: error status = %d", p_data->reg_for_notify.status);
-            break;
+            /* Disconnect */
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+        }else{
+            /* Now we're ready to send our command to the EQ-3 trv */
+            ESP_LOGI(GATTC_TAG, "Send eq3 command");
+            esp_ble_gattc_write_char( gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, gl_profile_tab[PROFILE_A_APP_ID].char_handle,
+                                  cmd_len, cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
         }
-
-        ESP_LOGI(GATTC_TAG, "REG FOR_NOTIFY: srvc_id = %04x, char_id = %04x", p_data->reg_for_notify.srvc_id.id.uuid.uuid.uuid16, p_data->reg_for_notify.char_id.uuid.uuid.uuid16);
-	
-	ESP_LOGI(GATTC_TAG, "Send eq3 command");
-	/* This is what we're actually here for :) */
-	esp_ble_gattc_write_char(gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, &eq3_service_id, &eq3_char_id, cmd_len, cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
-	
         break;
     }
     case ESP_GATTC_NOTIFY_EVT:
         /* EQ-3 has sent a notification with its current status */
-	/* Decode this and create a json message to send back to the controlling broker to keep state-machine up-to-date and acknowledge settings */
+        /* Decode this and create a json message to send back to the controlling broker to keep state-machine up-to-date and acknowledge settings */
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, Receive notify value:");
         esp_log_buffer_hex(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
-	
-	uint8_t tempval, temphalf = 0;
-	char statrep[120];
-	int statidx = 0;
-	
-	statidx += sprintf(&statrep[statidx], "{\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\"},", gl_profile_tab[PROFILE_A_APP_ID].remote_bda[0], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[1],
-			   gl_profile_tab[PROFILE_A_APP_ID].remote_bda[2], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[3], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[4], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[5]);
-	
-	if(p_data->notify.value_len > 5){
-	    tempval = p_data->notify.value[5];
-	    if(tempval & 0x01)
-	        temphalf = 5;
-	    tempval >>= 1;
-	    ESP_LOGI(GATTC_TAG, "eq3 settemp is %d.%d C", tempval, temphalf);
-	    statidx += sprintf(&statrep[statidx], "{\"temp\":%d.%d}", tempval, temphalf);
-	}
-	if(p_data->notify.value_len > 3){
-	    tempval = p_data->notify.value[3];
-	    statidx += sprintf(&statrep[statidx], ",{\"boost\":");
-	    if(tempval == 0x50){
-	        ESP_LOGI(GATTC_TAG, "eq3 boost active");
-		statidx += sprintf(&statrep[statidx], "\"active\"}");
-	    }else{
-	        ESP_LOGI(GATTC_TAG, "eq3 boost inactive");
-		statidx += sprintf(&statrep[statidx], "\"inactive\"}");
-	    }
-	}
-	if(p_data->notify.value_len > 2){
-	    tempval = p_data->notify.value[2];
-	    statidx += sprintf(&statrep[statidx], ",{\"mode\":");
-	    switch(tempval & 0x0f){
-	        case 0x08:
-	            ESP_LOGI(GATTC_TAG, "eq3 set auto");
-		    statidx += sprintf(&statrep[statidx], "\"auto\"}");
-	            break;
-	        case 0x09:
-		    ESP_LOGI(GATTC_TAG, "eq3 set manual");
-		    statidx += sprintf(&statrep[statidx], "\"manual\"}");
-		    break;
-		case 0x0a:
-		    ESP_LOGI(GATTC_TAG, "eq3 set eco");
-		    statidx += sprintf(&statrep[statidx], "\"eco\"}");
-		    break;
-	    }
-	    statidx += sprintf(&statrep[statidx], ",{\"state\":");
-	    if((tempval & 0xf0) == 0x20){
-	        ESP_LOGI(GATTC_TAG, "eq3 set locked");
-		statidx += sprintf(&statrep[statidx], "\"locked\"}");
-	    }else{
-	        ESP_LOGI(GATTC_TAG, "eq3 set unlocked");
-		statidx += sprintf(&statrep[statidx], "\"unlocked\"}");
-	    }
-	}
-	/* Send the status report we just collated */
-	send_trv_status(statrep);
-	
-	/* 2 second delay until disconnect to allow any background GATTC stuff to complete */
-	setnextcmd(EQ3_DISCONNECT, 2);
-	start_timer(1000);
-	
-	break;
+
+        uint8_t tempval, temphalf = 0;
+        char statrep[240];
+        int statidx = 0;
+
+        statidx += sprintf(&statrep[statidx], "{");
+        statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", gl_profile_tab[PROFILE_A_APP_ID].remote_bda[0], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[1],
+            gl_profile_tab[PROFILE_A_APP_ID].remote_bda[2], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[3], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[4], gl_profile_tab[PROFILE_A_APP_ID].remote_bda[5]);
+
+        if(p_data->notify.value[0] == PROP_INFO_RETURN && p_data->notify.value[1] == 1){
+            if(p_data->notify.value_len > 5){
+                tempval = p_data->notify.value[5];
+                if(tempval & 0x01)
+                    temphalf = 5;
+                tempval >>= 1;
+                ESP_LOGI(GATTC_TAG, "eq3 settemp is %d.%d C", tempval, temphalf);
+                statidx += sprintf(&statrep[statidx], "\"temp\":\"%d.%d\"", tempval, temphalf);
+            }
+            if(p_data->notify.value_len > 3){
+                tempval = p_data->notify.value[3];
+                ESP_LOGI(GATTC_TAG, "eq3 valve %d%% open\n", tempval);
+                statidx += sprintf(&statrep[statidx], ",\"valve\":\"%d%% open\"", tempval);
+            }
+            if(p_data->notify.value_len > 2){
+                tempval = p_data->notify.value[2];
+                statidx += sprintf(&statrep[statidx], ",\"mode\":");
+                if(tempval & MANUAL){
+                    ESP_LOGI(GATTC_TAG, "eq3 set manual");
+                    statidx += sprintf(&statrep[statidx], "\"manual\"");
+                }else if(tempval & AWAY){
+                    ESP_LOGI(GATTC_TAG, "eq3 set eco");
+                    statidx += sprintf(&statrep[statidx], "\"eco\"");
+                }else{
+                    ESP_LOGI(GATTC_TAG, "eq3 set auto");
+                    statidx += sprintf(&statrep[statidx], "\"auto\"");
+                }
+                statidx += sprintf(&statrep[statidx], ",\"boost\":");
+                if(tempval & BOOST){
+                    ESP_LOGI(GATTC_TAG, "eq3 boost");
+                    statidx += sprintf(&statrep[statidx], "\"active\"");
+                }else{
+                    ESP_LOGI(GATTC_TAG, "eq3 no boost");
+                    statidx += sprintf(&statrep[statidx], "\"inactive\"");
+                }
+                if(tempval & WINDOW){
+                    ESP_LOGI(GATTC_TAG, "eq3 window open");
+                }
+                statidx += sprintf(&statrep[statidx], ",\"state\":");
+                if(tempval & LOCKED){
+                    ESP_LOGI(GATTC_TAG, "eq3 locked");
+                    statidx += sprintf(&statrep[statidx], "\"locked\"");
+                }else{
+                    ESP_LOGI(GATTC_TAG, "eq3 unlocked");
+                    statidx += sprintf(&statrep[statidx], "\"unlocked\"");
+                }
+                statidx += sprintf(&statrep[statidx], ",\"battery\":");
+                if(tempval & LOW_BATTERY){
+                    ESP_LOGI(GATTC_TAG, "eq3 battery LOW");
+                    statidx += sprintf(&statrep[statidx], "\"LOW\"");
+                }else{
+                    ESP_LOGI(GATTC_TAG, "eq3 battery good");
+                    statidx += sprintf(&statrep[statidx], "\"GOOD\"");
+                }
+            }
+            statidx += sprintf(&statrep[statidx], "}");
+            /* Send the status report we just collated */
+            send_trv_status(statrep);
+        }else{
+            ESP_LOGI(GATTC_TAG, "eq3 got response 0x%x, 0x%x\n", p_data->notify.value[0], p_data->notify.value[1]);
+        }
+
+        /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
+        setnextcmd(EQ3_DISCONNECT, 2);
+        runtimer();
+
+    break;
     case ESP_GATTC_UNREG_FOR_NOTIFY_EVT: {
         /* Oops - this won't happen
-	 * forgot to call unregister-for-notify before disconnecting - may need to revisit if it causes problems */
+         * forgot to call unregister-for-notify before disconnecting - may need to revisit if it causes problems */
         if (p_data->unreg_for_notify.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "UNREG FOR NOTIFY failed: error status = %d", p_data->unreg_for_notify.status);
             break;
         }
 
-	esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
-	
+        esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
+
         break;
-    }
+    }  
 #ifdef removed    
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
@@ -377,7 +580,13 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             break;
         }
         ESP_LOGI(GATTC_TAG, "write descr success ");
+        
+        ESP_LOGI(GATTC_TAG, "Send eq3 command");
+        esp_ble_gattc_write_char( gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, gl_profile_tab[PROFILE_A_APP_ID].char_handle,
+                                  cmd_len, cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
         break;
+#endif
+#ifdef removed        
     case ESP_GATTC_SRVC_CHG_EVT: {
         esp_bd_addr_t bda;
         memcpy(bda, p_data->srvc_chg.remote_bda, sizeof(esp_bd_addr_t));
@@ -390,6 +599,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* Characteristic write complete */
         if (p_data->write.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "write char failed, error status = %x", p_data->write.status);
+            /* Disconnect */
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
             break;
         }
         ESP_LOGI(GATTC_TAG, "write char success ");
@@ -398,7 +609,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* Disconnected */
         get_server = false;
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, status = %d", p_data->disconnect.status);
-	//esp_ble_gattc_app_unregister(gl_profile_tab[PROFILE_A_APP_ID].gattc_if);
+	    //esp_ble_gattc_app_unregister(gl_profile_tab[PROFILE_A_APP_ID].gattc_if);
         break;
     default:
         ESP_LOGI(GATTC_TAG, "Unhandled_EVT %d", event);
@@ -406,10 +617,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 }
 
-static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param)
-{
-    //ESP_LOGI(GATTC_TAG, "EVT %d, gattc if %d", event, gattc_if);
-
+static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param){
     /* If event is register event, store the gattc_if for each profile */
     if (event == ESP_GATTC_REG_EVT) {
         if (param->reg.status == ESP_GATT_OK) {
@@ -419,7 +627,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             return;
         }
     }
-
     /* If the gattc_if equal to profile A, call profile A cb handler,
      * so here call each profile's callback */
     do {
@@ -449,6 +656,10 @@ typedef enum {
     EQ3_MANUAL,
     EQ3_ECO,
     EQ3_SETTEMP,
+    EQ3_OFFSET,
+    EQ3_POLL,
+    EQ3_LOCK,
+    EQ3_UNLOCK,
 }eq3_bt_cmd;
 
 struct eq3cmd{
@@ -487,29 +698,29 @@ static void uart_task()
     while(1) {
         //Read data from UART
         int len = uart_read_bytes(uart_num, data, BUF_SIZE - 1, 20 / portTICK_RATE_MS);
-	if(cmdidx + len < 1024){
-	    int cpylen = 0;
-	    while(cpylen < len){
-	        if(data[cpylen] == '\n' || data[cpylen] == '\r'){
-		    if(cmdidx > 0 && msgQueue != NULL){
-		        uint8_t *newMsg = (uint8_t *)malloc(cmdidx + 1);
-		        if(newMsg != NULL){
-			    memcpy(newMsg, cmd_buf, cmdidx);
-			    newMsg[cmdidx] = 0;
-			    ESP_LOGI(GATTC_TAG, "Send");
-		            xQueueSend( msgQueue, (void *)&newMsg, ( TickType_t ) 0 );
+	    if(cmdidx + len < 1024){
+	        int cpylen = 0;
+	        while(cpylen < len){
+	            if(data[cpylen] == '\n' || data[cpylen] == '\r'){
+		            if(cmdidx > 0 && msgQueue != NULL){
+		                uint8_t *newMsg = (uint8_t *)malloc(cmdidx + 1);
+		                if(newMsg != NULL){
+			                memcpy(newMsg, cmd_buf, cmdidx);
+			                newMsg[cmdidx] = 0;
+			                ESP_LOGI(GATTC_TAG, "Send");
+		                    xQueueSend( msgQueue, (void *)&newMsg, ( TickType_t ) 0 );
 			    
-			    /* TODO - check if the above failed */
+			                /* TODO - check if the above failed */
 			    	            
-			}
-		    }
-		    cmdidx = 0;
-		    cpylen++;
-		}else{
-	            cmd_buf[cmdidx++] = data[cpylen++];  
-		}
+			            }
+		            }
+		            cmdidx = 0;
+		            cpylen++;
+		        }else{
+	                cmd_buf[cmdidx++] = data[cpylen++];  
+		        }
+	        }
 	    }
-	}
         //Write data back to UART
         uart_write_bytes(uart_num, (const char*) data, len);
     }
@@ -517,49 +728,108 @@ static void uart_task()
 
 /* Handle an EQ-3 command from uart or mqtt */
 int handle_request(char *cmdstr){
-
-    char *cmdptr;
+    char *cmdptr = cmdstr;
     struct eq3cmd *newcmd;
     eq3_bt_cmd command;
-    unsigned int param = 0;
-    
+    unsigned int param = 0;   
     bool start = false;
     //ESP_LOGE(GATTC_TAG, "Got %s", cmdstr);
+  
+    newcmd = malloc(sizeof(struct eq3cmd));
+    if(newcmd == NULL)
+        return -1;
+
+    while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
+        cmdptr++;
     
+    int adidx = ESP_BD_ADDR_LEN;
+    while(adidx > 0){
+        newcmd->bleda[ESP_BD_ADDR_LEN - adidx] = strtol(cmdptr, &cmdptr, 16);
+        if(adidx > 1){
+	        while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
+                cmdptr++;
+        }
+	    adidx--;
+    }
+    if(*cmdptr == 0){
+        free(newcmd);
+        return -1;
+    }
+
     /* Assume the mac (with colons) comes first */
-    cmdptr = (char *)&cmdstr[18];
-    
+    //cmdptr = (char *)&cmdstr[18];
+    while(*cmdptr == ' ')
+        cmdptr++;    
+    if(strncmp((const char *)cmdptr, "poll", 4) == 0){
+        start = true;
+	    command = EQ3_POLL;
+    }
     if(strncmp((const char *)cmdptr, "boost", 5) == 0){
         start = true;
-	command = EQ3_BOOST;
+	    command = EQ3_BOOST;
     }
     if(strncmp((const char *)cmdptr, "unboost", 7) == 0){
         start = true;
-	command = EQ3_UNBOOST;
+	    command = EQ3_UNBOOST;
     }
     if(strncmp((const char *)cmdptr, "auto", 4) == 0){
         start = true;
-	command = EQ3_AUTO;
+	    command = EQ3_AUTO;
     }
     if(strncmp((const char *)cmdptr, "manual", 6) == 0){
         start = true;
-	command = EQ3_MANUAL;
+	    command = EQ3_MANUAL;
+    }
+    if(strncmp((const char *)cmdptr, "lock", 4) == 0){
+        start = true;
+	    command = EQ3_LOCK;
+    }
+    if(strncmp((const char *)cmdptr, "unlock", 6) == 0){
+        start = true;
+	    command = EQ3_UNLOCK;
+    }
+    if(strncmp((const char *)cmdptr, "offset", 6) == 0){
+        char *endmsg;
+        float offset = strtof(cmdptr + 7, &endmsg);
+        if(offset < -3.5 || offset > 3.5){
+            // Error
+            free(newcmd);
+            return -1;
+        }
+        offset += 3.5;
+        offset *= 2;
+        param = (unsigned int)offset;
+        start = true;
+	    command = EQ3_OFFSET;
+        ESP_LOGI(GATTC_TAG, "set offset val 0x%x\n", param);
     }
     if(strncmp((const char *)cmdptr, "settemp", 7) == 0){
         char *endmsg;
-        uint8_t temp = strtol(cmdptr + 8, &endmsg, 10);
-	if(temp > 5 && temp < 30){
+        float temp = strtof(cmdptr + 8, &endmsg);
+        int inttemp = (int)temp;
+        if(inttemp >= 5 && inttemp < 30){
             start = true;
             command = EQ3_SETTEMP;
-            param = temp << 1;
-	}
+            param = inttemp << 1;
+            if(temp - (float)inttemp >= 0.5)
+                param |= 0x01;
+	    }else{
+#ifdef removed
+            /* Queue an error message */
+            /* Return an error here */
+            mqtt_command_error(newcmd->bleda, "Invalid temperature requested");
+#endif
+            ESP_LOGI(GATTC_TAG, "Invalid temperature %0.1f requested", temp);
+            free(newcmd);
+            return -1;
+        }
     }
     
     if(start == true){
         newcmd = malloc(sizeof(struct eq3cmd));
 	
-	newcmd->cmd = command;
-	newcmd->cmdval = param;
+	    newcmd->cmd = command;
+	    newcmd->cmdval = param;
 	
         while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
             cmdstr++;
@@ -567,29 +837,36 @@ int handle_request(char *cmdstr){
         int adidx = ESP_BD_ADDR_LEN;
         while(adidx > 0){
             newcmd->bleda[ESP_BD_ADDR_LEN - adidx] = strtol(cmdstr, &cmdstr, 16);
-	    while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
+	        while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
                 cmdstr++;
-	    adidx--;
+	        adidx--;
         }
     
         ESP_LOGI(GATTC_TAG, "Requested address:");
         esp_log_buffer_hex(GATTC_TAG, newcmd->bleda, sizeof(esp_bd_addr_t));
 	
-	newcmd->next = NULL;
+	    newcmd->next = NULL;
     
         struct eq3cmd *qwalk = cmdqueue;
         if(cmdqueue == NULL){
             cmdqueue = newcmd;
-	    ESP_LOGI(GATTC_TAG, "Add queue head");
-	}else{
-	    while(qwalk->next != NULL)
-	        qwalk = qwalk->next;
-	    qwalk->next = newcmd;
-	    ESP_LOGI(GATTC_TAG, "Add queue end");
-	}
-	if(timer_running() == true)
-	    ESP_LOGI(GATTC_TAG, "Timer still running!!??");
-	start_timer(1000);
+	        ESP_LOGI(GATTC_TAG, "Add queue head");
+	    }else{
+	        while(qwalk->next != NULL)
+	            qwalk = qwalk->next;
+	        qwalk->next = newcmd;
+	       ESP_LOGI(GATTC_TAG, "Add queue end");
+	    }
+	    if(timer_running() == true)
+	        ESP_LOGI(GATTC_TAG, "Timer still running!!??");
+	    runtimer();
+    }else{
+#ifdef removed
+        mqtt_command_error(newcmd->bleda, "Invalid command");
+#endif
+        ESP_LOGI(GATTC_TAG, "Invalid command %s", cmdptr);
+        free(newcmd);
+        return -1;
     }
     return 0;
 }    
@@ -598,35 +875,55 @@ int handle_request(char *cmdstr){
 static int setup_command(void){
     if(cmdqueue != NULL){
         switch(cmdqueue->cmd){
-	  case EQ3_BOOST:
-            cmd_val[0] = 0x45;
+        case EQ3_POLL:
+            cmd_val[0] = PROP_INFO_QUERY;
+            cmd_len = 1;
+        break;
+	    case EQ3_BOOST:
+            cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x01;
-	    cmd_len = 2;
+	        cmd_len = 2;
 	    break;
-	  case EQ3_UNBOOST:
-            cmd_val[0] = 0x45;
+	    case EQ3_UNBOOST:
+            cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x00;
-	    cmd_len = 2;
+	        cmd_len = 2;
 	    break;
-	  case EQ3_AUTO:
-            cmd_val[0] = 0x40;
+	    case EQ3_AUTO:
+            cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x00;
-	    cmd_len = 2;
+	        cmd_len = 2;
 	    break;
-	  case EQ3_MANUAL:
-            cmd_val[0] = 0x45;
+	    case EQ3_MANUAL:
+            cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x40;
-	    cmd_len = 2;
+	        cmd_len = 2;
 	    break;
-	  case EQ3_SETTEMP:
-            cmd_val[0] = 0x41;
+	    case EQ3_SETTEMP:
+            cmd_val[0] = PROP_TEMPERATURE_WRITE;
             cmd_val[1] = (cmdqueue->cmdval & 0xff);
-	    cmd_len = 2;
+	        cmd_len = 2;
 	    break;
-	  default:
-	    ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
+        case EQ3_OFFSET:
+            cmd_val[0] = PROP_OFFSET;
+            cmd_val[1] = (cmdqueue->cmdval & 0xff);
+            cmd_len = 2;
+        break;
+        case EQ3_LOCK:
+            cmd_val[0] = PROP_LOCK;
+            cmd_val[1] = 1;
+            cmd_len = 2;
+            break;
+        case EQ3_UNLOCK:
+            cmd_val[0] = PROP_LOCK;
+            cmd_val[1] = 0;
+            cmd_len = 2;
+        break;
+	    default:
+	        ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
+
 	    break;
-	}
+	    }
 	memcpy(cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
 	struct eq3cmd *delcmd = cmdqueue;
 	cmdqueue = cmdqueue->next;
@@ -646,8 +943,8 @@ static int run_command(void){
 }
 
 /* Callback from config - copy url, username and password for mqtt broker */
-static char *usr = NULL, *pass = NULL, *url = NULL;
-void confparms(char *mqtturl, char *mqttuser, char *mqttpass){
+static char *usr = NULL, *pass = NULL, *url = NULL, *id = NULL;
+void confparms(char *mqtturl, char *mqttuser, char *mqttpass, char *mqttid){
     if(usr != NULL){
         free(usr);
 	usr = NULL;
@@ -672,12 +969,29 @@ void confparms(char *mqtturl, char *mqttuser, char *mqttpass){
         pass = strdup(mqttpass);
         ESP_LOGI(GATTC_TAG, "MQTT config pass is %s", mqttpass);
     }
+    if(mqttid != NULL && mqttid[0] != 0){
+        id = strdup(mqttid);
+        ESP_LOGI(GATTC_TAG, "MQTT id is %s\n", mqttid);
+    }
 }
 
 /* Callback when we're associated with an AP */
 void wifidone(int rc){
-    ESP_LOGI(GATTC_TAG, "Wifi setup done\n");
-    connect_server(url, usr, pass);
+    static bool server_started = false;
+    if(rc == 0){
+        /* We are an AP */
+        ESP_LOGI(GATTC_TAG, "WiFi connection failed - I am an access point for a few minutes\n"); 
+        /* Max 5 minutes as AP then we retry station mode */
+        setnextcmd(RESTART_WIFI, 300);
+        runtimer();
+    }else{
+        /* We are station and connected */
+        ESP_LOGI(GATTC_TAG, "!!!!!!!!!!!!!!!!!!!! Wifi setup done !!!!!!!!!!!!!!!!!!!\n");
+        if(server_started == false){
+            connect_server(url, usr, pass, id);
+            server_started = true;
+        }
+    }
     return;
 }
 
@@ -689,11 +1003,6 @@ void app_main(){
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
-
-    ESP_LOGI(GATTC_TAG, "Init wifi");
-    //initialise_wifi();
- 
-    bootWiFi(wifidone, confparms);
     
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
@@ -734,11 +1043,11 @@ void app_main(){
 
     if( msgQueue == NULL ){
         /* Queue was not created and must not be used. */
-	ESP_LOGE(GATTC_TAG, "Queue create failed");
+	    ESP_LOGE(GATTC_TAG, "Queue create failed");
     }
     if( timer_queue == NULL ){
         /* Queue was not created and must not be used. */
-	ESP_LOGE(GATTC_TAG, "Timer queue create failed");
+	    ESP_LOGE(GATTC_TAG, "Timer queue create failed");
     }
     
     /* Initialise timer0 */
@@ -750,6 +1059,15 @@ void app_main(){
         ESP_LOGE(GATTC_TAG, "%s gattc app register failed, error code = %x\n", __func__, ret);
     }
     
+    if(wifistartdelay == true){
+        setnextcmd(START_WIFI, 5);
+        runtimer();
+    }else{
+        ESP_LOGI(GATTC_TAG, "Init wifi");
+        //initialise_wifi();
+        bootWiFi(wifidone, confparms);
+    }
+    
     /* Kick off a GAP scan */
     start_scan();
     
@@ -758,33 +1076,44 @@ void app_main(){
     timer_event_t evt;
     while(1){
         /* Receive messages from uart */
-	if( xQueueReceive( msgQueue, (void *)&msg, 0)){
-	    char *msgptr = (char *)msg;
-	    handle_request(msgptr);
-	    free(msg);	    
-	}
-	
-	/* Timer message handling */
-	if(xQueueReceive(timer_queue, &evt, 0)){
-            ESP_LOGI(GATTC_TAG, "Timer0 returned");
-	    if(nextcmd.running == true){
-	        if(--nextcmd.countdown <= 0){
-		    switch(nextcmd.cmd){
-		      case EQ3_DISCONNECT:
-			ESP_LOGE(GATTC_TAG, "RQ close");
-	                esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
-			break;
-			
-		    }
-		    nextcmd.running = false;
-		}else{
-		    start_timer(1000);
-		}
-	    }else{
-	        run_command();
+	    if( xQueueReceive( msgQueue, (void *)&msg, (portTICK_PERIOD_MS * 25))){
+	        char *msgptr = (char *)msg;
+	        handle_request(msgptr);
+	        free(msg);	    
 	    }
-	}
-	//ESP_LOGI(GATTC_TAG, "Loop");
+	
+	    /* Timer message handling */
+	    if(xQueueReceive(timer_queue, &evt, 0)){
+            //ESP_LOGI(GATTC_TAG, "Timer0 returned");
+            
+	        if(nextcmd.running == true){
+                //ESP_LOGI(GATTC_TAG, "countdown is %d\n", nextcmd.countdown);
+	            if(--nextcmd.countdown <= 0){
+		            switch(nextcmd.cmd){
+		                case EQ3_DISCONNECT:
+			                ESP_LOGI(GATTC_TAG, "RQ close");
+	                        esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
+                            ESP_LOGI(GATTC_TAG, "RQ sent");
+			            break;
+                        case START_WIFI:
+                            ESP_LOGI(GATTC_TAG, "Init wifi");
+                            bootWiFi(wifidone, confparms);
+                            break;
+                        case RESTART_WIFI:
+                            ESP_LOGI(GATTC_TAG, "Becoming WiFi client again\n");
+                            restart_station();
+                            break;
+			
+		            }
+		            nextcmd.running = false;
+		        }else{
+		            runtimer();
+		        }
+	        }else{
+	            run_command();
+	        }
+	    }
+	    //ESP_LOGI(GATTC_TAG, "Loop");
     }
 }
 

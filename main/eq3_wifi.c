@@ -56,65 +56,14 @@ static const char *MQTT_TAG = "mqtt";
  * MQTT support code
  */
 
+static void connected_cb(mqtt_client *client, mqtt_event_data_t *event_data);
+static void disconnected_cb(mqtt_client *client, mqtt_event_data_t *event_data);
+static void subscribe_cb(mqtt_client *client, mqtt_event_data_t *event_data);
+static void publish_cb(mqtt_client *client, mqtt_event_data_t *event_data);
+static void data_cb(mqtt_client *client, mqtt_event_data_t *event_data);
+
 static mqtt_client *repclient = NULL;
 static char *devlist = NULL;
-
-/* MQTT connected callback */
-void connected_cb(mqtt_client *client, mqtt_event_data_t *event_data){
-    repclient = client;
-    /* Subscribe to /espradin/# for commands */
-    mqtt_subscribe(client, "/espradin/#", 0);
-    /* Publish welcome message to /espradout */
-    mqtt_publish(client, "/espradout", "Heating control active", 22, 0, 0);
-    if(devlist != NULL){
-        /* Publish discovered EQ-3 device list to /espradout/devlist */
-        mqtt_publish(client, "/espradout/devlist", devlist, strlen(devlist), 0, 0);
-	free(devlist);
-	devlist = NULL;
-    }
-}
-/* MQTT disconnected */
-void disconnected_cb(mqtt_client *client, mqtt_event_data_t *event_data){
-    repclient = NULL;
-}
-/* Subscribed */
-void subscribe_cb(mqtt_client *client, mqtt_event_data_t *event_data){
-    ESP_LOGI(MQTT_TAG, "[APP] Subscribe ok, test publish msg");
-}
-
-void publish_cb(mqtt_client *client, mqtt_event_data_t *event_data){
-
-}
-
-/* MQTT data received (subscribed topic receives data) */
-void data_cb(mqtt_client *client, mqtt_event_data_t *event_data){
-    bool trvcmd = false, trvscan = false;
-    if(event_data->data_offset == 0) {
-        char *topic = malloc(event_data->topic_length + 1);
-        memcpy(topic, event_data->topic, event_data->topic_length);
-        topic[event_data->topic_length] = 0;
-	if(strstr(topic, "/trv") != NULL)
-	    trvcmd = true;
-	if(strstr(topic, "/scan") != NULL)
-	    trvscan = true;
-        ESP_LOGI(MQTT_TAG, "[APP] Publish topic: %s", topic);
-        free(topic);
-    }
-
-    if(trvcmd == true){
-        char *data = malloc(event_data->data_length + 1);
-        memcpy(data, event_data->data, event_data->data_length);
-        data[event_data->data_length] = 0;
-        handle_request(data);
-	free(data);
-	ESP_LOGI(MQTT_TAG, "Queue trv msg");
-    }
-    
-    if(trvscan == true){
-        start_scan();
-    }
-    
-}
 
 mqtt_settings settings = {
 #if defined(CONFIG_MQTT_SECURITY_ON)
@@ -122,10 +71,11 @@ mqtt_settings settings = {
 #else
     .port = 1883, // unencrypted
 #endif
-    .client_id = "esp32mqtt_client_id",
-    .clean_session = 0,
+    //.client_id = "esp32mqtt_client_id",
+    .clean_session = 1,
+    .auto_reconnect = true,
     .keepalive = 60,
-    .lwt_topic = "/espradout",
+    //.lwt_topic = "/espradout",
     .lwt_msg = "Heating control offline",
     .lwt_qos = 0,
     .lwt_retain = 0,
@@ -136,10 +86,87 @@ mqtt_settings settings = {
     .data_cb = data_cb
 };
 
+static char intopicbase[30];
+static char outtopicbase[30];
+
+/* MQTT connected callback */
+static void connected_cb(mqtt_client *client, mqtt_event_data_t *event_data){
+    char topic[38];
+    char startmsg[35];
+    sprintf(topic, "%s/#", intopicbase);
+    repclient = client;
+    /* Subscribe to /espradin/# for commands */
+    mqtt_subscribe(client, topic, 0);
+    /* Publish welcome message to /espradout */
+    sprintf(topic, "%s/connect", outtopicbase);
+    sprintf(startmsg, "Heating control v%s.%s active", EQ3_MAJVER, EQ3_MINVER);
+    mqtt_publish(client, topic, startmsg, strlen(startmsg), 0, 0);
+    if(devlist != NULL){
+        sprintf(topic, "%s/devlist", outtopicbase);
+        /* Publish discovered EQ-3 device list to /espradout/devlist */
+        mqtt_publish(client, topic, devlist, strlen(devlist), 0, 0);
+	free(devlist);
+	devlist = NULL;
+    }
+}
+/* MQTT disconnected */
+static void disconnected_cb(mqtt_client *client, mqtt_event_data_t *event_data){
+    repclient = NULL;
+    ESP_LOGI(MQTT_TAG, "MQTT disconnected - wait for reconnect");
+    //mqtt_start(&settings);
+}
+/* Subscribed */
+static void subscribe_cb(mqtt_client *client, mqtt_event_data_t *event_data){
+    ESP_LOGI(MQTT_TAG, "[APP] Subscribe ok, test publish msg");
+}
+
+static void publish_cb(mqtt_client *client, mqtt_event_data_t *event_data){
+
+}
+
+/* MQTT data received (subscribed topic receives data) */
+static void data_cb(mqtt_client *client, mqtt_event_data_t *event_data){
+    bool trvcmd = false, trvscan = false;
+    if(event_data->data_offset == 0) {
+        char *topic = malloc(event_data->topic_length + 1);
+        memcpy(topic, event_data->topic, event_data->topic_length);
+        topic[event_data->topic_length] = 0;
+	    if(strstr(topic, "/trv") != NULL)
+	        trvcmd = true;
+	    if(strstr(topic, "/scan") != NULL)
+	        trvscan = true;
+        if(strstr(topic, "/check") != NULL){
+	        char rsptopic[45];
+            char msg[35];
+            sprintf(rsptopic, "%s/checkresp", outtopicbase);
+            sprintf(msg, "sw ver %s.%s", EQ3_MAJVER, EQ3_MINVER);
+            mqtt_publish(client, rsptopic, msg, strlen(msg), 0, 0);   
+        }
+        ESP_LOGI(MQTT_TAG, "[APP] Publish topic: %s", topic);
+        free(topic);
+    }
+
+    if(trvcmd == true){
+        char *data = malloc(event_data->data_length + 1);
+        memcpy(data, event_data->data, event_data->data_length);
+        data[event_data->data_length] = 0;
+        ESP_LOGI(MQTT_TAG, "Handle trv msg");
+        handle_request(data);
+	    free(data);
+    }
+    
+    if(trvscan == true){
+        start_scan();
+    }
+    
+}
+
 /* Publish a status message */
 int send_trv_status(char *status){
     if(repclient != NULL){
-        mqtt_publish(repclient, "/espradout/status", status, strlen(status), 0, 0);
+        char topic[38];
+        sprintf(topic, "%s/status", outtopicbase);
+        mqtt_publish(repclient, topic, status, strlen(status), 0, 0);
     }
     return 0;
 }
@@ -147,24 +174,31 @@ int send_trv_status(char *status){
 /* Publish a discovered device list */
 int send_device_list(char *list){
     if(repclient != NULL){
-        mqtt_publish(repclient, "/espradout/devlist", list, strlen(list), 0, 0);
-	free(list);
+        char topic[38];
+        sprintf(topic, "%s/devlist", outtopicbase);
+        mqtt_publish(repclient, topic, list, strlen(list), 0, 0);
+	    free(list);
     }else{
         if(devlist != NULL)
 	    free(devlist);
-	ESP_LOGI(MQTT_TAG, "Queue device list message to publish");
+	    ESP_LOGI(MQTT_TAG, "Queue device list message to publish");
         devlist = list;
     }
     return 0;
 }
 
-int connect_server(char *url, char *user, char *password){
+int connect_server(char *url, char *user, char *password, char *id){
     if(url != NULL)
         strcpy(settings.host, url);
     if(user != NULL)
         strcpy(settings.username, user);
     if(password != NULL)
         strcpy(settings.password, password);
+    if(id != NULL)
+        strcpy(settings.client_id, id);
+    sprintf(settings.lwt_topic, "/%sradout", id);
+    sprintf(intopicbase, "/%sradin", id);
+    sprintf(outtopicbase, "/%sradout", id);
     mqtt_start(&settings);
     return 0;
 }

@@ -9,8 +9,9 @@
 #define MAIN_BOOTWIFI_H_
 
 typedef void (*bootwifi_callback_t)(int rc);
-typedef void (*bootwifi_parms_t)(char *, char *, char *);
+typedef void (*bootwifi_parms_t)(char *, char *, char *, char *);
 void bootWiFi();
+void restart_station(void);
 
 
 #endif /* MAIN_BOOTWIFI_H_ */

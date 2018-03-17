@@ -22,7 +22,7 @@
 #include <mongoose.h>
 #include "eq3_bootwifi.h"
 #include "sdkconfig.h"
-#include "eq3_selAP.h"
+#include "eq3_seleAP.h"
 
 // If the structure of a record saved for a subsequent reboot changes
 // then consider using semver to change the version number or else
@@ -35,6 +35,7 @@ uint32_t g_version=0x0100;
 #define SSID_SIZE (32) // Maximum SSID size
 #define USERNAME_SIZE (64) // Maximum username size
 #define PASSWORD_SIZE (64) // Maximum password size
+#define ID_SIZE       (32)
 #define MAX_URL_SIZE  (256) // Maximum url length
 
 typedef struct {
@@ -43,6 +44,7 @@ typedef struct {
 	char mqtturl[MAX_URL_SIZE];
 	char mqttuser[USERNAME_SIZE];
 	char mqttpass[PASSWORD_SIZE];
+	char mqttid[ID_SIZE];
 	tcpip_adapter_ip_info_t ipInfo; // Optional static IP information
 } connection_info_t;
 
@@ -56,7 +58,7 @@ static int g_mongooseStopRequest = 0; // Request to stop the mongoose server.
 static void saveConnectionInfo(connection_info_t *pConnectionInfo);
 static void becomeAccessPoint();
 static void bootWiFi2();
-
+static bool haveconninfo = false;
 static char tag[] = "bootwifi";
 
 
@@ -177,6 +179,7 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
 				mg_get_http_var(&message->body, "mqtturl", connectionInfo.mqtturl, SSID_SIZE);
 				mg_get_http_var(&message->body, "mqttuser", connectionInfo.mqttuser, SSID_SIZE);
 				mg_get_http_var(&message->body, "mqttpass", connectionInfo.mqttpass, SSID_SIZE);
+				mg_get_http_var(&message->body, "mqttid", connectionInfo.mqttid, ID_SIZE);
 				
 				char ipBuf[20];
 				if (mg_get_http_var(&message->body, "ip", ipBuf, sizeof(ipBuf)) > 0) {
@@ -257,6 +260,22 @@ static void mongooseTask(void *data) {
 	return;
 } // mongooseTask
 
+#define MAXCONNATTEMPTS 25
+static int connattempts = 0;
+static connection_info_t connectionInfo;
+static void becomeStation(connection_info_t *pConnectionInfo);
+static void becomeAccessPoint();
+
+static int setStatusLed(int on) {
+#ifdef STATUS_LED_GPIO
+	gpio_pad_select_gpio(STATUS_LED_GPIO);
+	gpio_set_direction(STATUS_LED_GPIO, GPIO_MODE_OUTPUT);
+	//gpio_set_pull_mode(BOOTWIFI_OVERRIDE_GPIO, GPIO_PULLUP_ONLY);
+	return gpio_set_level(STATUS_LED_GPIO, on);
+#else
+	return 1; 
+#endif
+}
 
 /**
  * An ESP32 WiFi event handler.
@@ -288,11 +307,14 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 			ESP_LOGD(tag, "* your browser to http://" IPSTR, IP2STR(&ip_info.ip));
 			ESP_LOGD(tag, "**********************************************");
 			// Start Mongoose ...
-			if (!g_mongooseStarted)
-			{
+			if (!g_mongooseStarted){
 				g_mongooseStarted = 1;
 				xTaskCreatePinnedToCore(&mongooseTask, "bootwifi_mongoose_task", 8000, NULL, 5, NULL, 0);
 			}
+			/* If we have conninfo allow the timer to restart station mode in a little while */
+			if (haveconninfo == true && g_callback) {
+				g_callback(0);
+            }
 			break;
 		} // SYSTEM_EVENT_AP_START
 
@@ -301,7 +323,14 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 			ESP_LOGD(tag, "Station disconnected started");
 			// We think we tried to connect as a station and failed! ... become
 			// an access point.
-			becomeAccessPoint();
+            if(connattempts++ > MAXCONNATTEMPTS){
+			    connattempts = 0;
+                setStatusLed(1);
+			    becomeAccessPoint();
+			}else{
+                setStatusLed(0);
+			    becomeStation(&connectionInfo);
+			}
 			break;
 		} // SYSTEM_EVENT_AP_START
 
@@ -312,6 +341,7 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 			ESP_LOGD(tag, "* We are now connected and ready to do work!")
 			ESP_LOGD(tag, "* - Our IP address is: " IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
 			ESP_LOGD(tag, "********************************************");
+            connattempts = 0;
 			g_mongooseStopRequest = 1; // Stop mongoose (if it is running).
 			// Invoke the callback if Mongoose has NOT been started ... otherwise
 			// we will invoke the callback when mongoose has ended.
@@ -398,6 +428,7 @@ static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
 	nvs_close(handle);
 } // setConnectionInfo
 
+bool sta_configured = false;
 
 /**
  * Become a station connecting to an existing access point.
@@ -406,23 +437,28 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
 	ESP_LOGD(tag, "- Connecting to access point \"%s\" ...", pConnectionInfo->ssid);
 	assert(strlen(pConnectionInfo->ssid) > 0);
 
-	// If we have a static IP address information, use that.
-	if (pConnectionInfo->ipInfo.ip.addr != 0) {
-		ESP_LOGD(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
-		tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
-		tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &pConnectionInfo->ipInfo);
-	} else {
-		tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA);
-	}
+    if(sta_configured == false){
+	    // If we have a static IP address information, use that.
+	    if (pConnectionInfo->ipInfo.ip.addr != 0) {
+		    ESP_LOGD(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
+		    tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
+		    tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &pConnectionInfo->ipInfo);
+	    } else {
+		    tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA);
+	    }
 
-  ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
-  wifi_config_t sta_config;
-  sta_config.sta.bssid_set = 0;
-  memcpy(sta_config.sta.ssid, pConnectionInfo->ssid, SSID_SIZE);
-  memcpy(sta_config.sta.password, pConnectionInfo->password, PASSWORD_SIZE);
-  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
-  ESP_ERROR_CHECK(esp_wifi_start());
-  ESP_ERROR_CHECK(esp_wifi_connect());
+        ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
+        wifi_config_t sta_config;
+        sta_config.sta.bssid_set = 0;
+        memcpy(sta_config.sta.ssid, pConnectionInfo->ssid, SSID_SIZE);
+        memcpy(sta_config.sta.password, pConnectionInfo->password, PASSWORD_SIZE);
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
+        sta_configured = true;
+    //}
+    
+    ESP_ERROR_CHECK(esp_wifi_start());
+    }
+    ESP_ERROR_CHECK(esp_wifi_connect());
 } // becomeStation
 
 
@@ -433,6 +469,7 @@ static void becomeAccessPoint() {
 	ESP_LOGD(tag, "- Starting being an access point ...");
 	// We don't have connection info so be an access point!
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    sta_configured = false;
 	wifi_config_t apConfig = {
 		.ap = {
 			.ssid="HeatingController",
@@ -467,14 +504,13 @@ static int checkOverrideGpio() {
 #endif
 } // checkOverrideGpio
 
-
-
 static void bootWiFi2() {
 	ESP_LOGD(tag, ">> bootWiFi2");
 	// Check for a GPIO override which occurs when a physical Pin is high
 	// during the test.  This can force the ability to check for new configuration
 	// even if the existing configured access point is available.
 	if (checkOverrideGpio() == 0) {
+        setStatusLed(1);
 		ESP_LOGD(tag, "- GPIO override detected");
 		becomeAccessPoint();
 	} else {
@@ -483,26 +519,34 @@ static void bootWiFi2() {
 		// against.  If that information doesn't exist, then again we become an
 		// access point ourselves in order to allow a client to connect and bring
 		// up a browser.
-		connection_info_t connectionInfo;
 		int rc = getConnectionInfo(&connectionInfo);
 		if (rc == 0) {
 			// We have received connection information, let us now become a station
 			// and attempt to connect to the access point.
+            ESP_LOGD(tag, "Network config present - becoming client");
+            setStatusLed(0);
+            haveconninfo = true;
 			becomeStation(&connectionInfo);
 			if(g_parms != NULL)
-			    g_parms(connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass);
+			    g_parms(connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid);
 
 		} else {
 			// We do NOT have connection information.  Let us now become an access
 			// point that serves up a web server and allow a browser user to specify
 			// the details that will be eventually used to allow us to connect
 			// as a station.
+            ESP_LOGD(tag, "No network config - becoming AP");
+            setStatusLed(1);
 			becomeAccessPoint();
 		} // We do NOT have connection info
 	}
 	ESP_LOGD(tag, "<< bootWiFi2");
 } // bootWiFi2
 
+void restart_station(void){
+	setStatusLed(0);
+    becomeStation(&connectionInfo);
+}
 
 /**
  * Main entry into bootWiFi

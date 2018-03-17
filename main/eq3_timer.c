@@ -56,7 +56,7 @@ void IRAM_ATTR timer_group0_isr(void *para)
         TIMERG0.int_clr_timers.t0 = 1;
         uint64_t timer_val = ((uint64_t) TIMERG0.hw_timer[timer_idx].cnt_high) << 32 | TIMERG0.hw_timer[timer_idx].cnt_low;
 
-	timer0running = false;
+	    timer0running = false;
 	
         /*Post an event to out example task*/
         evt.type = TEST_WITHOUT_RELOAD;
@@ -65,7 +65,7 @@ void IRAM_ATTR timer_group0_isr(void *para)
         evt.counter_val = timer_val;
         xQueueSendFromISR(timer_queue, &evt, NULL);
 
-	/*Enable timer interrupt*/
+	    /*Enable timer interrupt*/
         timer_disable_intr(TIMER_GROUP_0, timer_idx);
     
     } 
