@@ -18,16 +18,16 @@ to obey commands.
 
 On first use the ESP32 will start in access-point mode appearing as 'HeatingController'. Connect to this
 AP (password is 'password') and browse to the device IP address (192.168.4.1). The device configuration 
-parameters can be set here:
-ssid - the AP to connect to for normal operation
-password - the password for the AP
-mqtturl - url to access the mqtt broker
-mqttuser - mqtt broker username
-mqttpass - mqtt broker password
-mqttid - the unique id for this device to use with the mqtt broker
-ip - fixed IP for WiFi network (leave blank to DHCP)
-gw - gateway IP for WiFi network (leave blank for DHCP)
-netmask - netmask for WiFi network (leave blank for DHCP)
+parameters can be set here:  
+ssid - the AP to connect to for normal operation  
+password - the password for the AP  
+mqtturl - url to access the mqtt broker  
+mqttuser - mqtt broker username  
+mqttpass - mqtt broker password  
+mqttid - the unique id for this device to use with the mqtt broker  
+ip - fixed IP for WiFi network (leave blank to DHCP)  
+gw - gateway IP for WiFi network (leave blank for DHCP)  
+netmask - netmask for WiFi network (leave blank for DHCP)  
 
 Once connected in WiFi STA mode this application first scans for EQ-3 valves and publishes their addresses 
 to the MQTT broker. A scan can be initiated at any time by publishing to the /<mqttid>radin/scan topic. 
@@ -58,9 +58,9 @@ The application can be forced into config mode by pressing and holding the BOOT 
 web server is part of Mongoose - https://github.com/cesanta/mongoose
 MQTT library is https://github.com/tuanpmt/espmqtt
 
-Testing:
-connect to a mosquitto broker.
-mosquitto_sub -h 127.0.0.1 -p 1883 -t "<mqttid>radout/devlist" - will display a list of discovered EQ-3 TRVs
-mosquitto_sub -h 127.0.0.1 -p 1883 -t "<mqttid>radout/status" - will show a status message each time a trv is contacted
-mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl settemp 20.0" set trv temp to 20 degrees
+Testing:  
+connect to a mosquitto broker.  
+mosquitto_sub -h 127.0.0.1 -p 1883 -t "<mqttid>radout/devlist" - will display a list of discovered EQ-3 TRVs  
+mosquitto_sub -h 127.0.0.1 -p 1883 -t "<mqttid>radout/status" - will show a status message each time a trv is contacted  
+mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl settemp 20.0" set trv temp to 20 degrees  
 
