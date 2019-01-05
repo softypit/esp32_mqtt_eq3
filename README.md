@@ -36,8 +36,10 @@ Scan results are published to /<mqttid>radout/devlist in json format.
 Control of valves is carried out by publishing to the <mqttid>radin/trv topic with a payload consisting of:
 ab:cd:ef:gh:ij:kl <command> [parm]
 where the device is indicated by its bluetooth address (MAC)
-commands are: poll, boost, unboost, manual, auto, lock, unlock, offset, settemp. 
-poll makes no changes but generates a status response in order to check the valve is available and its settings.
+
+commands are: poll, boost, unboost, manual, auto, lock, unlock, offset, settemp.
+
+poll makes no changes but generates a status response in order to check the valve is available and its settings. Attention: See #6, as this is currently not working correctly
 boost and unboost set and clear boost mode.
 lock and unlock set and clear the front-panel lock.
 manual mode prevents the valve from using its internal temperature/time program.
