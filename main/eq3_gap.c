@@ -19,7 +19,7 @@
 /****************************************************************************
 *
 * EQ-3 thermostatic radiator valve control
-* finds devices with CC-RT-M-BLE IDs 
+* finds devices with IDs listed in "remote_device_names" array.
 *
 ****************************************************************************/
 
@@ -41,6 +41,16 @@
 #include "eq3_wifi.h"
 
 #define EQ3_DBG_TAG "EQ3_CTRL"
+
+// For string handling
+#define N_ELEMS(x) ( sizeof(x) / sizeof((x)[0]) )
+typedef const char *ConstString;
+
+// Matching names for GAP scanning of remote devices
+static ConstString remote_device_names[] = {
+	"CC-RT-M-BLE",
+	"CC-RT-BLE",
+};
 
 ///Declare static functions
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
@@ -106,8 +116,6 @@ int add_found_device(esp_bd_addr_t *bda){
 }
 
 /* BT GAP device scanning code */
-static const char remote_device_name[] = "CC-RT-M-BLE";
-
 static esp_ble_scan_params_t ble_scan_params = {
     .scan_type              = BLE_SCAN_TYPE_ACTIVE,
     .own_addr_type          = BLE_ADDR_TYPE_PUBLIC,
@@ -116,8 +124,7 @@ static esp_ble_scan_params_t ble_scan_params = {
     .scan_window            = 0x30
 };
 
-static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
-{
+static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param){
     uint8_t *adv_name = NULL;
     uint8_t adv_name_len = 0;
     
@@ -129,47 +136,60 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 	free_found_devices();
         break;
     }
+
     case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
         //scan start complete event to indicate scan start successfully or failed
         if (param->scan_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
-            ESP_LOGE(EQ3_DBG_TAG, "scan start failed, error status = %x", param->scan_start_cmpl.status);
+            ESP_LOGE(EQ3_DBG_TAG, "scan start failed, error status = %x",
+                        param->scan_start_cmpl.status);
             break;
         }
         ESP_LOGI(EQ3_DBG_TAG, "scan start success");
 
         break;
+
     case ESP_GAP_BLE_SCAN_RESULT_EVT: {
         esp_ble_gap_cb_param_t *scan_result = (esp_ble_gap_cb_param_t *)param;
         switch (scan_result->scan_rst.search_evt) {
-        case ESP_GAP_SEARCH_INQ_RES_EVT:
-            //esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
-            //ESP_LOGI(EQ3_DBG_TAG, "searched Adv Data Len %d, Scan Response Len %d", scan_result->scan_rst.adv_data_len, scan_result->scan_rst.scan_rsp_len);
-            adv_name = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv, ESP_BLE_AD_TYPE_NAME_CMPL, &adv_name_len);
-            //ESP_LOGI(EQ3_DBG_TAG, "Scan found device (len %d)", adv_name_len);
-            //esp_log_buffer_char(EQ3_DBG_TAG, adv_name, adv_name_len);
-	    //esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
-            if (adv_name != NULL) {
-                if (strlen(remote_device_name) == adv_name_len && strncmp((char *)adv_name, remote_device_name, adv_name_len) == 0) {
-		    if(add_found_device(&scan_result->scan_rst.bda) == 0){
-		      ESP_LOGI(EQ3_DBG_TAG, "Found device %s", remote_device_name);
-		      esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
-		    }
+            case ESP_GAP_SEARCH_INQ_RES_EVT:
+                /* esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
+                   ESP_LOGI(EQ3_DBG_TAG,
+                            "searched Adv Data Len %d, Scan Response Len %d",
+                            scan_result->scan_rst.adv_data_len,
+                            scan_result->scan_rst.scan_rsp_len); */
+                adv_name = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
+                                                    ESP_BLE_AD_TYPE_NAME_CMPL,
+                                                    &adv_name_len);
+                //ESP_LOGI(EQ3_DBG_TAG, "Scan found device (len %d)", adv_name_len);
+                //esp_log_buffer_char(EQ3_DBG_TAG, adv_name, adv_name_len);
+                //esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
+                if (adv_name != NULL){
+                    for (int i = 0; i < N_ELEMS(remote_device_names); ++i){
+                        if (   strlen(remote_device_names[i]) == adv_name_len
+                            && strncmp( (char *)adv_name, remote_device_names[i], adv_name_len)
+                            == 0){
+                            if(add_found_device(&scan_result->scan_rst.bda) == 0){
+                                ESP_LOGI(EQ3_DBG_TAG, "Found device %s", remote_device_names[i]);
+                                esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
+                            }
+                        }
+                    }
                 }
-            }
-            break;
-        case ESP_GAP_SEARCH_INQ_CMPL_EVT:
-	    gap_scanning = false;
-	    scan_done();
-            break;
-        default:
-            break;
+                break;
+            case ESP_GAP_SEARCH_INQ_CMPL_EVT:
+                gap_scanning = false;
+                scan_done();
+                break;
+            default:
+                break;
         }
         break;
     }
 
     case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
         if (param->scan_stop_cmpl.status != ESP_BT_STATUS_SUCCESS){
-            ESP_LOGE(EQ3_DBG_TAG, "scan stop failed, error status = %x", param->scan_stop_cmpl.status);
+            ESP_LOGE(EQ3_DBG_TAG, "scan stop failed, error status = %x",
+                        param->scan_stop_cmpl.status);
             break;
         }
         ESP_LOGI(EQ3_DBG_TAG, "Scan finished successfully");
@@ -177,19 +197,26 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 
     case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
         if (param->adv_stop_cmpl.status != ESP_BT_STATUS_SUCCESS){
-            ESP_LOGE(EQ3_DBG_TAG, "adv stop failed, error status = %x", param->adv_stop_cmpl.status);
+            ESP_LOGE(EQ3_DBG_TAG, "adv stop failed, error status = %x",
+                    param->adv_stop_cmpl.status);
             break;
         }
         ESP_LOGI(EQ3_DBG_TAG, "stop adv successfully");
         break;
     case ESP_GAP_BLE_UPDATE_CONN_PARAMS_EVT:
-         ESP_LOGI(EQ3_DBG_TAG, "update connection params status = %d, min_int = %d, max_int = %d,conn_int = %d,latency = %d, timeout = %d",
-                  param->update_conn_params.status,
-                  param->update_conn_params.min_int,
-                  param->update_conn_params.max_int,
-                  param->update_conn_params.conn_int,
-                  param->update_conn_params.latency,
-                  param->update_conn_params.timeout);
+        ESP_LOGI(EQ3_DBG_TAG,
+                "update connection params status = %d, "
+                "min_int = %d, "
+                "max_int = %d, "
+                "conn_int = %d, "
+                "latency = %d, "
+                "timeout = %d",
+                param->update_conn_params.status,
+                param->update_conn_params.min_int,
+                param->update_conn_params.max_int,
+                param->update_conn_params.conn_int,
+                param->update_conn_params.latency,
+                param->update_conn_params.timeout);
         break;
     default:
         break;
@@ -225,8 +252,9 @@ static void scan_done(){
             esp_log_buffer_hex(EQ3_DBG_TAG, devwalk->bda, 6);
             ESP_LOGI(EQ3_DBG_TAG, "\n");
 	
-	    sprintf(&report[devnum * 20], "{%02X:%02X:%02X:%02X:%02X:%02X},", devwalk->bda[0], devwalk->bda[1], devwalk->bda[2], devwalk->bda[3], devwalk->bda[4], devwalk->bda[5]);
-	
+	    sprintf(&report[devnum * 20], "{%02X:%02X:%02X:%02X:%02X:%02X},", devwalk->bda[0],
+                    devwalk->bda[1], devwalk->bda[2], devwalk->bda[3], devwalk->bda[4],
+                    devwalk->bda[5]);
 	    devnum++;
             devwalk = devwalk->next;
         }
