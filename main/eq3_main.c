@@ -153,7 +153,7 @@ static esp_bt_uuid_t eq3_resp_filter_char_uuid = {
 
 /* Current TRV command being sent to EQ-3 */ 
 uint16_t cmd_len = 0;
-uint8_t cmd_val[10] = {0};
+uint8_t cmd_val[20] = {0};
 esp_bd_addr_t cmd_bleda;   /* BLE Device Address */
 
 static bool get_server = false;
@@ -200,7 +200,6 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
     statidx += sprintf(&statrep[statidx], "{");
     statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
     statidx += sprintf(&statrep[statidx], "\"error\":\"%s\"}", error);
-    statidx += sprintf(&statrep[statidx], "}");
     send_trv_status(statrep);
 
     /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
@@ -228,8 +227,6 @@ static void mqtt_command_error(esp_bd_addr_t bleda, char *error){
     statidx += sprintf(statrep[statidx], "{");
     statidx += sprintf(statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
     statidx += sprintf(statrep[statidx], "\"error\":\"%s\"}", error);
-    statidx += sprintf(statrep[statidx], "}");
-
 
     send_trv_status(statrep);
 
@@ -645,6 +642,9 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
 
 #define BUF_SIZE (1024)
 
+#define MAX_CMD_BYTES 6
+#define SET_TIME_BYTES 6
+
 /* Message queue of EQ-3 messages */
 QueueHandle_t msgQueue = NULL;
 QueueHandle_t timer_queue = NULL;
@@ -657,7 +657,7 @@ typedef enum {
     EQ3_ECO,
     EQ3_SETTEMP,
     EQ3_OFFSET,
-    EQ3_POLL,
+    EQ3_SETTIME,
     EQ3_LOCK,
     EQ3_UNLOCK,
 }eq3_bt_cmd;
@@ -665,7 +665,7 @@ typedef enum {
 struct eq3cmd{
     esp_bd_addr_t bleda;
     eq3_bt_cmd cmd;
-    unsigned int cmdval;
+    unsigned char cmdparms[MAX_CMD_BYTES];
     struct eq3cmd *next;
 };
 
@@ -730,11 +730,13 @@ static void uart_task()
 int handle_request(char *cmdstr){
     char *cmdptr = cmdstr;
     struct eq3cmd *newcmd;
-    eq3_bt_cmd command;
-    unsigned int param = 0;   
+    eq3_bt_cmd command; 
+    unsigned char cmdparms[MAX_CMD_BYTES];  
     bool start = false;
     //ESP_LOGE(GATTC_TAG, "Got %s", cmdstr);
-  
+
+/* Remove double malloc for newcmd which causes memory leak */
+#ifdef removed  
     newcmd = malloc(sizeof(struct eq3cmd));
     if(newcmd == NULL)
         return -1;
@@ -755,14 +757,33 @@ int handle_request(char *cmdstr){
         free(newcmd);
         return -1;
     }
-
-    /* Assume the mac (with colons) comes first */
-    //cmdptr = (char *)&cmdstr[18];
+#endif
+    // Skip the bleaddr
+    while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
+        cmdptr++;
+    while(*cmdptr != 0 && (isxdigit((int)*cmdptr) || *cmdptr == ':'))
+        cmdptr++;
+    // Skip any spaces
     while(*cmdptr == ' ')
         cmdptr++;    
-    if(strncmp((const char *)cmdptr, "poll", 4) == 0){
+    if(strncmp((const char *)cmdptr, "settime", 7) == 0){
         start = true;
-	    command = EQ3_POLL;
+
+        if(strlen(cmdptr + 8) < 12){
+            //free(newcmd);
+            /* TODO more validation of time argument */
+            ESP_LOGI(GATTC_TAG, "Invalid time argument %s", cmdptr + 8);
+            return -1;
+        }
+        char hexdigit[3];
+        int dig;
+        hexdigit[2] = 0;
+        for(dig=0; dig < SET_TIME_BYTES; dig++){
+            hexdigit[0] = *(cmdptr + 8 + (dig * 2));
+            hexdigit[1] = *(cmdptr + 9 + (dig * 2));
+            cmdparms[dig] = (unsigned char)strtol(hexdigit, NULL, 16);
+        }
+	command = EQ3_SETTIME;
     }
     if(strncmp((const char *)cmdptr, "boost", 5) == 0){
         start = true;
@@ -793,15 +814,15 @@ int handle_request(char *cmdstr){
         float offset = strtof(cmdptr + 7, &endmsg);
         if(offset < -3.5 || offset > 3.5){
             // Error
-            free(newcmd);
+            //free(newcmd);
             return -1;
         }
         offset += 3.5;
         offset *= 2;
-        param = (unsigned int)offset;
+        cmdparms[0] = (unsigned char)offset;
         start = true;
-	    command = EQ3_OFFSET;
-        ESP_LOGI(GATTC_TAG, "set offset val 0x%x\n", param);
+	command = EQ3_OFFSET;
+        ESP_LOGI(GATTC_TAG, "set offset val 0x%x\n", cmdparms[0]);
     }
     if(strncmp((const char *)cmdptr, "settemp", 7) == 0){
         char *endmsg;
@@ -810,9 +831,9 @@ int handle_request(char *cmdstr){
         if(inttemp >= 5 && inttemp < 30){
             start = true;
             command = EQ3_SETTEMP;
-            param = inttemp << 1;
+            cmdparms[0] = (unsigned char)(inttemp << 1);
             if(temp - (float)inttemp >= 0.5)
-                param |= 0x01;
+                cmdparms[0] |= 0x01;
 	    }else{
 #ifdef removed
             /* Queue an error message */
@@ -820,16 +841,21 @@ int handle_request(char *cmdstr){
             mqtt_command_error(newcmd->bleda, "Invalid temperature requested");
 #endif
             ESP_LOGI(GATTC_TAG, "Invalid temperature %0.1f requested", temp);
-            free(newcmd);
+            //free(newcmd);
             return -1;
         }
     }
     
     if(start == true){
+        int parm;
+
         newcmd = malloc(sizeof(struct eq3cmd));
-	
-	    newcmd->cmd = command;
-	    newcmd->cmdval = param;
+
+	// TODO - what if malloc fails?
+
+	newcmd->cmd = command;
+        for(parm=0; parm < MAX_CMD_BYTES; parm++)
+            newcmd->cmdparms[parm] = cmdparms[parm];
 	
         while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
             cmdstr++;
@@ -845,27 +871,27 @@ int handle_request(char *cmdstr){
         ESP_LOGI(GATTC_TAG, "Requested address:");
         esp_log_buffer_hex(GATTC_TAG, newcmd->bleda, sizeof(esp_bd_addr_t));
 	
-	    newcmd->next = NULL;
+	newcmd->next = NULL;
     
         struct eq3cmd *qwalk = cmdqueue;
         if(cmdqueue == NULL){
             cmdqueue = newcmd;
-	        ESP_LOGI(GATTC_TAG, "Add queue head");
-	    }else{
-	        while(qwalk->next != NULL)
-	            qwalk = qwalk->next;
-	        qwalk->next = newcmd;
-	       ESP_LOGI(GATTC_TAG, "Add queue end");
-	    }
-	    if(timer_running() == true)
-	        ESP_LOGI(GATTC_TAG, "Timer still running!!??");
-	    runtimer();
+	    ESP_LOGI(GATTC_TAG, "Add queue head");
+	}else{
+	    while(qwalk->next != NULL)
+	        qwalk = qwalk->next;
+	    qwalk->next = newcmd;
+	   ESP_LOGI(GATTC_TAG, "Add queue end");
+	}
+	if(timer_running() == true)
+	    ESP_LOGI(GATTC_TAG, "Timer still running!!??");
+	runtimer();
     }else{
 #ifdef removed
         mqtt_command_error(newcmd->bleda, "Invalid command");
 #endif
         ESP_LOGI(GATTC_TAG, "Invalid command %s", cmdptr);
-        free(newcmd);
+        //free(newcmd);
         return -1;
     }
     return 0;
@@ -874,41 +900,44 @@ int handle_request(char *cmdstr){
 /* Get the next command off the queue and encode the characteristic parameters */
 static int setup_command(void){
     if(cmdqueue != NULL){
+        int parm;
         switch(cmdqueue->cmd){
-        case EQ3_POLL:
+        case EQ3_SETTIME:
             cmd_val[0] = PROP_INFO_QUERY;
-            cmd_len = 1;
-        break;
-	    case EQ3_BOOST:
+            for(parm=0; parm < SET_TIME_BYTES; parm++)
+                cmd_val[1 + parm] = cmdqueue->cmdparms[parm];
+            cmd_len = 1 + SET_TIME_BYTES;
+            break;
+	case EQ3_BOOST:
             cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x01;
-	        cmd_len = 2;
+	    cmd_len = 2;
 	    break;
-	    case EQ3_UNBOOST:
+	case EQ3_UNBOOST:
             cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x00;
-	        cmd_len = 2;
+	    cmd_len = 2;
 	    break;
-	    case EQ3_AUTO:
+	case EQ3_AUTO:
             cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x00;
-	        cmd_len = 2;
+	    cmd_len = 2;
 	    break;
-	    case EQ3_MANUAL:
+	case EQ3_MANUAL:
             cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x40;
-	        cmd_len = 2;
+	    cmd_len = 2;
 	    break;
-	    case EQ3_SETTEMP:
+	case EQ3_SETTEMP:
             cmd_val[0] = PROP_TEMPERATURE_WRITE;
-            cmd_val[1] = (cmdqueue->cmdval & 0xff);
-	        cmd_len = 2;
+            cmd_val[1] = cmdqueue->cmdparms[0];
+	    cmd_len = 2;
 	    break;
         case EQ3_OFFSET:
             cmd_val[0] = PROP_OFFSET;
-            cmd_val[1] = (cmdqueue->cmdval & 0xff);
+            cmd_val[1] = cmdqueue->cmdparms[0];
             cmd_len = 2;
-        break;
+            break;
         case EQ3_LOCK:
             cmd_val[0] = PROP_LOCK;
             cmd_val[1] = 1;
@@ -918,12 +947,11 @@ static int setup_command(void){
             cmd_val[0] = PROP_LOCK;
             cmd_val[1] = 0;
             cmd_len = 2;
-        break;
-	    default:
-	        ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
-
+            break;
+	default:
+	    ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
 	    break;
-	    }
+	}
 	memcpy(cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
 	struct eq3cmd *delcmd = cmdqueue;
 	cmdqueue = cmdqueue->next;

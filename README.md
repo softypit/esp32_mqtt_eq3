@@ -22,7 +22,7 @@ On first use the ESP32 will start in access-point mode appearing as 'HeatingCont
 - gw - gateway IP for WiFi network (leave blank for DHCP)  
 - netmask - netmask for WiFi network (leave blank for DHCP)  
 
-Once connected in WiFi STA mode this application first scans for EQ-3 valves and publishes their addresses to the MQTT broker.  
+Once connected in WiFi STA mode this application first scans for EQ-3 valves and publishes their addresses and rssi to the MQTT broker.  
 A scan can be initiated at any time by publishing to the `/<mqttid>radin/scan` topic.  
 Scan results are published to `/<mqttid>radout/devlist` in json format.
 
@@ -30,20 +30,26 @@ Control of valves is carried out by publishing to the <mqttid>radin/trv topic wi
   `ab:cd:ef:gh:ij:kl <command> [parm]`
 where the device is indicated by its bluetooth address (MAC)
 
-commands are: poll, boost, unboost, manual, auto, lock, unlock, offset, settemp.
+commands are: settime, boost, unboost, manual, auto, lock, unlock, offset, settemp.
 
-- poll makes no changes but generates a status response in order to check the valve is available and its settings.  
-  Attention: See Issue #6, as this is currently not working correctly
+- settime sets the current time on the valve. 
 - boost and unboost set and clear boost mode.
 - lock and unlock set and clear the front-panel lock.
 - manual mode prevents the valve from using its internal temperature/time program.
 - offset sets the room-temperature offset (see EQ-3 instructions for what this means).
 - settemp sets the required temperature for the valve to open/close at.
 
+settime has an additional parameter of the hexadecimal encoded durrent time. parm is 12 characters hexadecimal yymmddhhMMss 
+e.g. 13010c0c0a00 is 2019/Jan/12 12:00.00
+
 offset and settemp have an additional parameter of the temperature to set this can be -3.5 - +3.5 for offset and
 5.0 to 29.5 in 0.5 degree increments.
 
-In response to every successful command a status message is published to /<mqttid>radout/status containing json-encoded details of address, temperature set point, valve open percentage, mode, boost state, lock state and battery state. This can be used as an acknowledgement of a successful command to remote mqtt clients.
+In response to every successful command a status message is published to /<mqttid>radout/status containing json-encoded details of address, temperature set point, valve open percentage, mode, boost state, lock state and battery state. 
+This can be used as an acknowledgement of a successful command to remote mqtt clients.
+There is no specific command to poll the status of the valve but using any of the commands to re-set the current value will achieve the required result.
+Note: It has been observed that using unboost to poll a valve can result in the valve opening as if in boost mode but without reporting boost mode active on the display or status. 
+It is probably not advisable to poll the valve with the unboost command.
 
 On first boot this application uses Kolbans bootwifi code to create the wifi AP.  
 Once configuration is complete and on subsequent boots the configured details are used for connection. If connection fails the application reverts to AP mode where the web interface is used to reconfigure. The application can be forced into config mode by pressing and holding the BOOT key AFTER the EN key has been released.
