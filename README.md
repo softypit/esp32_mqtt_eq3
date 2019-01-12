@@ -39,7 +39,7 @@ commands are: settime, boost, unboost, manual, auto, lock, unlock, offset, sette
 - offset sets the room-temperature offset (see EQ-3 instructions for what this means).
 - settemp sets the required temperature for the valve to open/close at.
 
-settime has an additional parameter of the hexadecimal encoded durrent time. parm is 12 characters hexadecimal yymmddhhMMss 
+settime has an additional parameter of the hexadecimal encoded current time. parm is 12 characters hexadecimal yymmddhhMMss 
 e.g. 13010c0c0a00 is 2019/Jan/12 12:00.00
 
 offset and settemp have an additional parameter of the temperature to set this can be -3.5 - +3.5 for offset and
