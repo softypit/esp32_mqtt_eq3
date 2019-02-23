@@ -21,6 +21,8 @@
 * EQ-3 thermostatic radiator valve control
 * finds devices with IDs listed in "remote_device_names" array.
 *
+* updated by Peter Becker (C) 2019
+*
 ****************************************************************************/
 
 #include <stdint.h>
@@ -29,10 +31,12 @@
 #include <stdio.h>
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "controller.h"
+//#include "controller.h"
 #include "driver/uart.h"
 
-#include "bt.h"
+#include "esp_log.h"
+
+#include "esp_bt.h"
 #include "esp_gap_ble_api.h"
 #include "esp_gattc_api.h"
 #include "esp_gatt_defs.h"
@@ -171,11 +175,13 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                 //esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
                 if (adv_name != NULL){
                     for (int i = 0; i < N_ELEMS(remote_device_names); ++i){
-                        if (   strlen(remote_device_names[i]) == adv_name_len
-                            && strncmp( (char *)adv_name, remote_device_names[i], adv_name_len)
-                            == 0){
+                        if (strlen(remote_device_names[i]) == adv_name_len
+                            && strncmp( (char *)adv_name, remote_device_names[i], adv_name_len) == 0)
+                        {
                             if(add_found_device(&scan_result->scan_rst.bda, scan_result->scan_rst.rssi) == 0){
-                                ESP_LOGI(EQ3_DBG_TAG, "Found device %s - rssi %d", remote_device_names[i], scan_result->scan_rst.rssi);
+                                ESP_LOGI(EQ3_DBG_TAG, "Found device %s - rssi %d, ble_addr_type: %d", remote_device_names[i], scan_result->scan_rst.rssi
+                                		, scan_result->scan_rst.ble_addr_type
+										);
                                 esp_log_buffer_hex(EQ3_DBG_TAG, scan_result->scan_rst.bda, 6);
                             }
                         }

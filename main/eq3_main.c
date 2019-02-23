@@ -6,6 +6,8 @@
 
 /* by Paul Tupper (C) 2017
  * derived from gatt_client example from Espressif Systems
+ *
+ * updated by Peter Becker (C) 2019
  */
 
 // Copyright 2015-2017 Espressif Systems (Shanghai) PTE LTD
@@ -29,10 +31,11 @@
 #include <ctype.h>
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "controller.h"
 #include "driver/uart.h"
 
-#include "bt.h"
+#include "esp_log.h"
+
+#include "esp_bt.h"
 #include "esp_gap_ble_api.h"
 #include "esp_gattc_api.h"
 #include "esp_gatt_defs.h"
@@ -272,7 +275,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* GATT Client connected to server(EQ-3) */
         //p_data->connect.status always be ESP_GATT_OK
         conn_id = p_data->connect.conn_id;
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_CONNECT_EVT conn_id %d, if %d, status %d", conn_id, gattc_if, p_data->connect.status);
+        ESP_LOGI(GATTC_TAG, "ESP_GATTC_CONNECT_EVT conn_id %d, if %d", conn_id, gattc_if);
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = conn_id;
         memcpy(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, p_data->connect.remote_bda, sizeof(esp_bd_addr_t));
         ESP_LOGI(GATTC_TAG, "REMOTE BDA:");
@@ -605,7 +608,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     case ESP_GATTC_DISCONNECT_EVT:
         /* Disconnected */
         get_server = false;
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, status = %d", p_data->disconnect.status);
+        ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, status = %d", p_data->disconnect.reason);
 	    //esp_ble_gattc_app_unregister(gl_profile_tab[PROFILE_A_APP_ID].gattc_if);
         break;
     default:
@@ -965,7 +968,14 @@ static int run_command(void){
     if(cmdqueue != NULL){
         ESP_LOGI(GATTC_TAG, "Send next command");
         setup_command();
-        esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, cmd_bleda, true);
+        esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, cmd_bleda, 0x00, true);
+        /*
+		#define BLE_ADDR_PUBLIC         0x00
+		#define BLE_ADDR_RANDOM         0x01
+		#define BLE_ADDR_PUBLIC_ID      0x02
+		#define BLE_ADDR_RANDOM_ID      0x03
+         */
+        //TODO: BLE_ADDR_PUBLIC Verify https://github.com/espressif/esp-idf/blob/a0468b2bd64c48d093309a4b3d623a7343c205c0/components/bt/bluedroid/stack/include/stack/bt_types.h
     }
     return 0;
 }
@@ -1039,7 +1049,7 @@ void app_main(){
         return;
     }
 
-    ret = esp_bt_controller_enable(ESP_BT_MODE_BTDM);
+    ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret) {
         ESP_LOGE(GATTC_TAG, "%s enable controller failed, error code = %x\n", __func__, ret);
         return;

@@ -2,11 +2,13 @@
  * Timer code for eq-3 interface
  * 
  * Borrowed from Espressiv timer example code
- * 
+ *
+ * updated by Peter Becker (C) 2019
 */
 
 #include <stdio.h>
 #include "esp_types.h"
+#include <esp_log.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -18,7 +20,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
-#include "controller.h"
 #include "driver/uart.h"
 
 #include "eq3_timer.h"
