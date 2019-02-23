@@ -302,10 +302,10 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 		case SYSTEM_EVENT_AP_START: { // Handle the AP start event
 			tcpip_adapter_ip_info_t ip_info;
 			tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info);
-			ESP_LOGD(tag, "**********************************************");
-			ESP_LOGD(tag, "* We are now an access point and you can point")
-			ESP_LOGD(tag, "* your browser to http://" IPSTR, IP2STR(&ip_info.ip));
-			ESP_LOGD(tag, "**********************************************");
+			ESP_LOGI(tag, "**********************************************");
+			ESP_LOGI(tag, "* We are now an access point and you can point");
+			ESP_LOGI(tag, "* your browser to http://" IPSTR, IP2STR(&ip_info.ip));
+			ESP_LOGI(tag, "**********************************************");
 			// Start Mongoose ...
 			if (!g_mongooseStarted){
 				g_mongooseStarted = 1;
@@ -337,10 +337,10 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 		// If we connected as a station then we are done and we can stop being a
 		// web server.
 		case SYSTEM_EVENT_STA_GOT_IP: {
-			ESP_LOGD(tag, "********************************************");
-			ESP_LOGD(tag, "* We are now connected and ready to do work!")
-			ESP_LOGD(tag, "* - Our IP address is: " IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
-			ESP_LOGD(tag, "********************************************");
+			ESP_LOGI(tag, "********************************************");
+			ESP_LOGI(tag, "* We are now connected and ready to do work!");
+			ESP_LOGI(tag, "* - Our IP address is: " IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
+			ESP_LOGI(tag, "********************************************");
             connattempts = 0;
 			g_mongooseStopRequest = 1; // Stop mongoose (if it is running).
 			// Invoke the callback if Mongoose has NOT been started ... otherwise
