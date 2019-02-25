@@ -22,7 +22,7 @@
 #include <mongoose.h>
 #include "eq3_bootwifi.h"
 #include "sdkconfig.h"
-#include "eq3_seleAP.h"
+#include "eq3_selectAP.h"
 
 // If the structure of a record saved for a subsequent reboot changes
 // then consider using semver to change the version number or else
@@ -61,65 +61,38 @@ static void bootWiFi2();
 static bool haveconninfo = false;
 static char tag[] = "bootwifi";
 
-
-
-
-
 /**
  * Convert a Mongoose event type to a string.  Used for debugging.
  */
 static char *mongoose_eventToString(int ev) {
-	static char temp[100];
 	switch (ev) {
-	case MG_EV_CONNECT:
-		return "MG_EV_CONNECT";
-	case MG_EV_ACCEPT:
-		return "MG_EV_ACCEPT";
-	case MG_EV_CLOSE:
-		return "MG_EV_CLOSE";
-	case MG_EV_SEND:
-		return "MG_EV_SEND";
-	case MG_EV_RECV:
-		return "MG_EV_RECV";
-	case MG_EV_HTTP_REQUEST:
-		return "MG_EV_HTTP_REQUEST";
-	case MG_EV_MQTT_CONNACK:
-		return "MG_EV_MQTT_CONNACK";
-	case MG_EV_MQTT_CONNACK_ACCEPTED:
-		return "MG_EV_MQTT_CONNACK";
-	case MG_EV_MQTT_CONNECT:
-		return "MG_EV_MQTT_CONNECT";
-	case MG_EV_MQTT_DISCONNECT:
-		return "MG_EV_MQTT_DISCONNECT";
-	case MG_EV_MQTT_PINGREQ:
-		return "MG_EV_MQTT_PINGREQ";
-	case MG_EV_MQTT_PINGRESP:
-		return "MG_EV_MQTT_PINGRESP";
-	case MG_EV_MQTT_PUBACK:
-		return "MG_EV_MQTT_PUBACK";
-	case MG_EV_MQTT_PUBCOMP:
-		return "MG_EV_MQTT_PUBCOMP";
-	case MG_EV_MQTT_PUBLISH:
-		return "MG_EV_MQTT_PUBLISH";
-	case MG_EV_MQTT_PUBREC:
-		return "MG_EV_MQTT_PUBREC";
-	case MG_EV_MQTT_PUBREL:
-		return "MG_EV_MQTT_PUBREL";
-	case MG_EV_MQTT_SUBACK:
-		return "MG_EV_MQTT_SUBACK";
-	case MG_EV_MQTT_SUBSCRIBE:
-		return "MG_EV_MQTT_SUBSCRIBE";
-	case MG_EV_MQTT_UNSUBACK:
-		return "MG_EV_MQTT_UNSUBACK";
-	case MG_EV_MQTT_UNSUBSCRIBE:
-		return "MG_EV_MQTT_UNSUBSCRIBE";
-	case MG_EV_WEBSOCKET_HANDSHAKE_REQUEST:
-		return "MG_EV_WEBSOCKET_HANDSHAKE_REQUEST";
-	case MG_EV_WEBSOCKET_HANDSHAKE_DONE:
-		return "MG_EV_WEBSOCKET_HANDSHAKE_DONE";
-	case MG_EV_WEBSOCKET_FRAME:
-		return "MG_EV_WEBSOCKET_FRAME";
+		case MG_EV_CONNECT:							return "MG_EV_CONNECT";
+		case MG_EV_ACCEPT:							return "MG_EV_ACCEPT";
+		case MG_EV_CLOSE:							return "MG_EV_CLOSE";
+		case MG_EV_SEND:							return "MG_EV_SEND";
+		case MG_EV_RECV:							return "MG_EV_RECV";
+		case MG_EV_HTTP_REQUEST:					return "MG_EV_HTTP_REQUEST";
+		case MG_EV_MQTT_CONNACK:					return "MG_EV_MQTT_CONNACK";
+		case MG_EV_MQTT_CONNACK_ACCEPTED:			return "MG_EV_MQTT_CONNACK";
+		case MG_EV_MQTT_CONNECT:					return "MG_EV_MQTT_CONNECT";
+		case MG_EV_MQTT_DISCONNECT:					return "MG_EV_MQTT_DISCONNECT";
+		case MG_EV_MQTT_PINGREQ:					return "MG_EV_MQTT_PINGREQ";
+		case MG_EV_MQTT_PINGRESP:					return "MG_EV_MQTT_PINGRESP";
+		case MG_EV_MQTT_PUBACK:						return "MG_EV_MQTT_PUBACK";
+		case MG_EV_MQTT_PUBCOMP:					return "MG_EV_MQTT_PUBCOMP";
+		case MG_EV_MQTT_PUBLISH:					return "MG_EV_MQTT_PUBLISH";
+		case MG_EV_MQTT_PUBREC:						return "MG_EV_MQTT_PUBREC";
+		case MG_EV_MQTT_PUBREL:						return "MG_EV_MQTT_PUBREL";
+		case MG_EV_MQTT_SUBACK:						return "MG_EV_MQTT_SUBACK";
+		case MG_EV_MQTT_SUBSCRIBE:					return "MG_EV_MQTT_SUBSCRIBE";
+		case MG_EV_MQTT_UNSUBACK:					return "MG_EV_MQTT_UNSUBACK";
+		case MG_EV_MQTT_UNSUBSCRIBE:				return "MG_EV_MQTT_UNSUBSCRIBE";
+		case MG_EV_WEBSOCKET_HANDSHAKE_REQUEST:		return "MG_EV_WEBSOCKET_HANDSHAKE_REQUEST";
+		case MG_EV_WEBSOCKET_HANDSHAKE_DONE:		return "MG_EV_WEBSOCKET_HANDSHAKE_DONE";
+		case MG_EV_WEBSOCKET_FRAME:					return "MG_EV_WEBSOCKET_FRAME";
 	}
+
+	static char temp[100];
 	sprintf(temp, "Unknown event: %d", ev);
 	return temp;
 } //eventToString

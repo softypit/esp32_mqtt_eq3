@@ -210,33 +210,6 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
     runtimer();
 }
 
-#ifdef removed
-/* Sort the mqtt error queueing !! */
-struct response_q_entry {
-    char *msg;
-    struct response_q_entry *next;
-};
-
-static struct response_q_entry *respq;
-
-static void mqtt_command_error(esp_bd_addr_t bleda, char *error){
-    char statrep = malloc(120);
-    struct response_q_entry *respqentry = malloc(sizeof(struct response_q_entry));
-    int statidx = 0;
-
-    respqentry->msg = statrep;
-    respqentry->next = NULL;
-
-    statidx += sprintf(statrep[statidx], "{");
-    statidx += sprintf(statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
-    statidx += sprintf(statrep[statidx], "\"error\":\"%s\"}", error);
-
-    send_trv_status(statrep);
-
-    runtimer();
-}
-#endif
-
 /* Callback function to handle GATT-Client events */ 
 /* While we've discovered the EQ-3 devices with the GAP handler we need to check the service we want is available when we connect
  * so we connect to the device and search its services before we try to set our chosen characteristic */
@@ -320,22 +293,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* Search result is in */
         esp_gatt_srvc_id_t *srvc_id =(esp_gatt_srvc_id_t *)&p_data->search_res.srvc_id;
         conn_id = p_data->search_res.conn_id;
-#ifdef removed        
-        if (srvc_id->id.uuid.len == ESP_UUID_LEN_32){
-          /* Ignore this service */
-          ESP_LOGI(GATTC_TAG, "Got UUID32: %x", srvc_id->id.uuid.uuid.uuid32);
-        }else if (srvc_id->id.uuid.len == ESP_UUID_LEN_16){
-          /* Ignore this service */
-          ESP_LOGI(GATTC_TAG, "Got UUID16: %x", srvc_id->id.uuid.uuid.uuid16);
-        }else if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
-          /* Check if the service identifier is the one we're interested in */
-          char printstr[ESP_UUID_LEN_128 * 2 + 1];
-          int bytecount, writecount = 0;
-          for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
-            sprintf(&printstr[writecount], "%02x", srvc_id->id.uuid.uuid.uuid128[bytecount] & 0xff);
-            ESP_LOGI(GATTC_TAG, "Got UUID128: %s", printstr);
-        }
-#endif        
+
         if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
           int checkcount;
           for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
@@ -573,28 +531,6 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
         break;
     }  
-#ifdef removed    
-    case ESP_GATTC_WRITE_DESCR_EVT:
-        if (p_data->write.status != ESP_GATT_OK){
-            ESP_LOGE(GATTC_TAG, "write descr failed, error status = %x", p_data->write.status);
-            break;
-        }
-        ESP_LOGI(GATTC_TAG, "write descr success ");
-        
-        ESP_LOGI(GATTC_TAG, "Send eq3 command");
-        esp_ble_gattc_write_char( gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, gl_profile_tab[PROFILE_A_APP_ID].char_handle,
-                                  cmd_len, cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
-        break;
-#endif
-#ifdef removed        
-    case ESP_GATTC_SRVC_CHG_EVT: {
-        esp_bd_addr_t bda;
-        memcpy(bda, p_data->srvc_chg.remote_bda, sizeof(esp_bd_addr_t));
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_SRVC_CHG_EVT, bd_addr:");
-        esp_log_buffer_hex(GATTC_TAG, bda, sizeof(esp_bd_addr_t));
-        break;
-    }
-#endif    
     case ESP_GATTC_WRITE_CHAR_EVT:
         /* Characteristic write complete */
         if (p_data->write.status != ESP_GATT_OK){
@@ -736,31 +672,7 @@ int handle_request(char *cmdstr){
     eq3_bt_cmd command; 
     unsigned char cmdparms[MAX_CMD_BYTES];  
     bool start = false;
-    //ESP_LOGE(GATTC_TAG, "Got %s", cmdstr);
 
-/* Remove double malloc for newcmd which causes memory leak */
-#ifdef removed  
-    newcmd = malloc(sizeof(struct eq3cmd));
-    if(newcmd == NULL)
-        return -1;
-
-    while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
-        cmdptr++;
-    
-    int adidx = ESP_BD_ADDR_LEN;
-    while(adidx > 0){
-        newcmd->bleda[ESP_BD_ADDR_LEN - adidx] = strtol(cmdptr, &cmdptr, 16);
-        if(adidx > 1){
-	        while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
-                cmdptr++;
-        }
-	    adidx--;
-    }
-    if(*cmdptr == 0){
-        free(newcmd);
-        return -1;
-    }
-#endif
     // Skip the bleaddr
     while(*cmdptr != 0 && !isxdigit((int)*cmdptr))
         cmdptr++;
@@ -824,7 +736,7 @@ int handle_request(char *cmdstr){
         offset *= 2;
         cmdparms[0] = (unsigned char)offset;
         start = true;
-	command = EQ3_OFFSET;
+        command = EQ3_OFFSET;
         ESP_LOGI(GATTC_TAG, "set offset val 0x%x\n", cmdparms[0]);
     }
     if(strncmp((const char *)cmdptr, "settemp", 7) == 0){
@@ -838,11 +750,6 @@ int handle_request(char *cmdstr){
             if(temp - (float)inttemp >= 0.5)
                 cmdparms[0] |= 0x01;
 	    }else{
-#ifdef removed
-            /* Queue an error message */
-            /* Return an error here */
-            mqtt_command_error(newcmd->bleda, "Invalid temperature requested");
-#endif
             ESP_LOGI(GATTC_TAG, "Invalid temperature %0.1f requested", temp);
             //free(newcmd);
             return -1;
@@ -856,7 +763,7 @@ int handle_request(char *cmdstr){
 
 	// TODO - what if malloc fails?
 
-	newcmd->cmd = command;
+        newcmd->cmd = command;
         for(parm=0; parm < MAX_CMD_BYTES; parm++)
             newcmd->cmdparms[parm] = cmdparms[parm];
 	
@@ -874,7 +781,7 @@ int handle_request(char *cmdstr){
         ESP_LOGI(GATTC_TAG, "Requested address:");
         esp_log_buffer_hex(GATTC_TAG, newcmd->bleda, sizeof(esp_bd_addr_t));
 	
-	newcmd->next = NULL;
+        newcmd->next = NULL;
     
         struct eq3cmd *qwalk = cmdqueue;
         if(cmdqueue == NULL){
@@ -888,11 +795,9 @@ int handle_request(char *cmdstr){
 	}
 	if(timer_running() == true)
 	    ESP_LOGI(GATTC_TAG, "Timer still running!!??");
-	runtimer();
-    }else{
-#ifdef removed
-        mqtt_command_error(newcmd->bleda, "Invalid command");
-#endif
+		runtimer();
+    }
+    else{
         ESP_LOGI(GATTC_TAG, "Invalid command %s", cmdptr);
         //free(newcmd);
         return -1;
