@@ -500,6 +500,17 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                 ESP_LOGI(GATTC_TAG, "eq3 settemp is %d.%d C", tempval, temphalf);
                 statidx += sprintf(&statrep[statidx], "\"temp\":\"%d.%d\"", tempval, temphalf);
             }
+            if(p_data->notify.value_len >= 14){
+            	int8_t offsetval, offsethalf = 0;
+            	offsetval = p_data->notify.value[14];
+            	offsetval -= 7; // The offset temperature is encoded in steps of 0.5°C between -3.5°C and 3.5°C
+
+				if(offsetval & 0x01)
+					offsethalf = 5;
+				offsetval >>= 1;
+				ESP_LOGI(GATTC_TAG, "eq3 offsettemp is %d.%d C", offsetval, offsethalf);
+				statidx += sprintf(&statrep[statidx], ",\"offsetTemp\":\"%d.%d\"", offsetval, offsethalf);
+			}
             if(p_data->notify.value_len > 3){
                 tempval = p_data->notify.value[3];
                 ESP_LOGI(GATTC_TAG, "eq3 valve %d%% open\n", tempval);
