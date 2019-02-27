@@ -234,10 +234,13 @@ int connect_server(char *url, char *user, char *password, char *id){
 		};
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&settings);
-    esp_mqtt_client_start(client);
-
-    ESP_LOGI(MQTT_TAG, "[APP] Settings.lwt_topic: %s", settings.lwt_topic);
-    ESP_LOGI(MQTT_TAG, "[APP] Settings.client_id: %s", settings.client_id);
+    if(client){
+        esp_mqtt_client_start(client);
+        ESP_LOGI(MQTT_TAG, "[APP] Settings.lwt_topic: %s", settings.lwt_topic);
+        ESP_LOGI(MQTT_TAG, "[APP] Settings.client_id: %s", settings.client_id);
+    }else{
+        ESP_LOGE(MQTT_TAG, "MQTT client failed to start");
+    }
 
     return 0;
 }

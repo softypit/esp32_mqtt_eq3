@@ -1007,8 +1007,13 @@ void confparms(char *mqtturl, char *mqttuser, char *mqttpass, char *mqttid){
 	url = NULL;
     }
     if(mqtturl != NULL && mqtturl[0] != 0){
-        url = strdup(mqtturl);
-        ESP_LOGI(GATTC_TAG, "MQTT config url is %s", mqtturl);
+        if(strstr(mqtturl, "//") != NULL){
+            url = strdup(mqtturl);
+        }else{
+            url = malloc(strlen(mqtturl) + 8);
+            sprintf(url, "mqtt://%s", mqtturl);
+        }
+        ESP_LOGI(GATTC_TAG, "MQTT config url is %s", url);
     }
     if(mqttuser != NULL && mqttuser[0] != 0){
         usr = strdup(mqttuser);
