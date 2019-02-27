@@ -3,7 +3,7 @@
 #define EQ3_WIFI_H
 
 #define EQ3_MAJVER "1"
-#define EQ3_MINVER "20"
+#define EQ3_MINVER "30"
 
 void initialise_wifi(void);
 

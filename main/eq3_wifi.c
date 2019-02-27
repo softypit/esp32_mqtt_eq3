@@ -38,6 +38,7 @@
 
 #include "eq3_wifi.h"
 #include "eq3_gap.h"
+#include "eq3_helper.h"
 
 #ifdef removed
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -209,11 +210,20 @@ int send_device_list(char *list){
 }
 
 static char lwt_topic_buff[38];
+static char mqtt_url_buff[256];
 
 int connect_server(char *url, char *user, char *password, char *id){
 	sprintf(lwt_topic_buff, "/%sradout", id);
 	sprintf(intopicbase, "/%sradin", id);
 	sprintf(outtopicbase, "/%sradout", id);
+
+	if(isLegacyMqttUrl(url))
+	{
+		char *prefixMqtt = "mqtt://";
+		sprintf(mqtt_url_buff, "%s%s", prefixMqtt, url);
+		ESP_LOGI(MQTT_TAG, "Use legacy fallback for mqtt-url: %s", mqtt_url_buff);
+		url = mqtt_url_buff;
+	}
 
 	esp_mqtt_client_config_t settings = {
 		#if defined(CONFIG_MQTT_SECURITY_ON)
