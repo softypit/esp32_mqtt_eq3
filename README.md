@@ -29,7 +29,7 @@ When using calorBT some very basic security is employed. This security however l
 
 ### Configuration
 
-On first use the ESP32 will start in access-point mode appearing as 'HeatingController'. Connect to this AP (password is 'password' or unset) and browse to the device IP address (192.168.4.1). The device configuration arameters can be set here:  
+On first use the ESP32 will start in access-point mode appearing as 'HeatingController'. Connect to this AP (password is 'password' or unset) and browse to the device IP address (192.168.4.1). The device configuration parameters can be set here:  
 
 | Parameter | Description | Exampels |
 | ------------- | ------------- | ------------- |
@@ -126,8 +126,20 @@ mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl 
 
 *possible incomplete list because of rebranding eq-3 thermostats*
 
-| Name Factory number | Model Name | Factory | Factory Model Number | Remark |
-| ------------- | ------------- | ------------- | ------------- | ------------- |
-| Eqiva eQ-3 Bluetooth Smart | CC-RT-BLE-EQ | EQIVA | 141771E0 |
-| Eqiva eQ-3 Bluetooth Smart | CC-RT-M-BLE | EQIVA | 142461A0 | discontinued sales |
-| EHT CLASSIC MBLE | CC-RT-M-BLE | EQIVA | 142461A0 | discontinued sales |
+| Name | Model Name | Factory | Factory Model Number | Remark | Verified |
+| ------------- | ------------- | ------------- | ------------- | ------------- | :-------------: |
+| Eqiva eQ-3 Bluetooth Smart <sup>2)</sup> | CC-RT-BLE-EQ | EQIVA | 141771E0 / 141771E0A | | X |
+| Eqiva eQ-3 Bluetooth Smart (UK Version) <sup>2)</sup> | CC-RT-M-BLE | EQIVA | 142461D0 | | <sup>1)</sup> |
+| Eqiva eQ-3 Bluetooth Smart <sup>2)</sup> | | EQIVA | 141771A1A | in the sale | <sup>1)</sup> |
+| Eqiva eQ-3 Bluetooth Smart <sup>2)</sup> | CC-RT-M-BLE | EQIVA | 142461A0 | discontinued sales | X |
+| EHT CLASSIC MBLE (UK Version) | CC-RT-M-BLE | EQIVA | 142461D0 | | <sup>1)</sup> |
+| EHT CLASSIC MBLE (UK Version) | CC-RT-M-BLE | EQIVA | 142461A0 | discontinued sales | <sup>1)</sup> |
+| SmartBlue Bluetooth | | | | | <sup>1)</sup> |
+
+<sup>1)</sup> Used the same calor BT-App, so this should work out of the box
+
+<sup>2)</sup> Many aliases for "Eqiva eQ-3 Bluetooth Smart" devices exists. Most of all are characterized by a combination of "Eqiva", "eQ-3", "Bluetooth", "Smart".<br>
+&nbsp;&nbsp;&nbsp;&nbsp;e.g. `"eQ-3 AG Eqiva BLUETOOTH® Smart"`, `"eqiva Bluetooth Smart Radiator Thermostat"`, `"eQ-3 eqiva Heizkörperthermostat Typ N"`, `"Eqiva Bluetooth Smart"`
+
+Don't by Models without Bluetooth logo. They won't work with this "hub". e.g. "Eqiva Model N, 132231K0A"
+
