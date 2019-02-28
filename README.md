@@ -20,6 +20,7 @@ The main problem with centrally controlling them is the limited range of BLE. Th
 * [Developer notes](#developer-notes)
 * [Testing](#testing)
 * [Supported Models](#supported-models)
+* [Credits](#credits)
 
 ## Description
 
@@ -141,5 +142,15 @@ mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl 
 <sup>2)</sup> Many aliases for "Eqiva eQ-3 Bluetooth Smart" devices exists. Most of all are characterized by a combination of "Eqiva", "eQ-3", "Bluetooth", "Smart".<br>
 &nbsp;&nbsp;&nbsp;&nbsp;e.g. `"eQ-3 AG Eqiva BLUETOOTH® Smart"`, `"eqiva Bluetooth Smart Radiator Thermostat"`, `"eQ-3 eqiva Heizkörperthermostat Typ N"`, `"Eqiva Bluetooth Smart"`
 
-Don't by Models without Bluetooth logo. They won't work with this "hub". e.g. "Eqiva Model N, 132231K0A"
+**Don't by Models without Bluetooth logo. They won't work with this "hub". e.g. "Eqiva Model N, 132231K0A"**
 
+## Credits
+
+* Based on the amazing work of the [ESP-IDF](https://github.com/espressif/esp-idf) project
+* and the reverse engineering of [@Heckie75](https://github.com/Heckie75/eQ-3-radiator-thermostat/blob/master/eq-3-radiator-thermostat-api.md)
+
+### Source and continuative reverse engineering by
+
+* Paul ([@softypit](https://github.com/softypit))
+* [@ul-gh](https://github.com/ul-gh)
+* Peter Becker ([@floyddotnet](https://github.com/floyddotnet))
