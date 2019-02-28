@@ -6,6 +6,21 @@ EQ-3 radiator valves work really well for a home-automation heating system. They
 
 The main problem with centrally controlling them is the limited range of BLE. This makes it impossible to use a single central-controller to talk to all TRVs in a typical house. Therefore multiple 'hubs' are required at distributed locations.
 
+## Table of Contents
+
+* [Description](#description)
+  + [Configuration](#configuration)
+    - [Reset configuration](#reset-configuration)
+  + [Determine EQ-3 addresses](#determine-eq-3-addresses)
+  + [Supported commands](#supported-commands)
+  + [JSON-Format of status topic](#json-format-of-status-topic)
+  + [Read current status](#read-current-status)
+  + [MQTT Topics](#mqtt-topics)
+* [Usage Summary](#usage-summary)
+* [Developer notes](#developer-notes)
+* [Testing](#testing)
+* [Supported Models](#supported-models)
+
 ## Description
 
 This application acts as a hub and uses BLE to communicate with EQ-3 TRVs and makes configuration possible via MQTT over WiFi. 
@@ -98,7 +113,7 @@ Once configuration is complete and on subsequent boots the configured details ar
 web server is part of Mongoose - https://github.com/cesanta/mongoose
 <br>~~MQTT library is https://github.com/tuanpmt/espmqtt~~
 
-## Testing:
+## Testing
 ```
 # Connect to a mosquitto broker:
 
