@@ -237,7 +237,6 @@ static void mongooseTask(void *data) {
 static int connattempts = 0;
 static connection_info_t connectionInfo;
 static void becomeStation(connection_info_t *pConnectionInfo);
-static void becomeAccessPoint();
 
 static int setStatusLed(int on) {
 #ifdef STATUS_LED_GPIO
