@@ -4,7 +4,7 @@
  * Borrowed from Espressiv timer example code
  *
  * updated by Peter Becker (C) 2019
-*/
+ */
 
 #include <stdio.h>
 #include "esp_types.h"
@@ -57,8 +57,8 @@ void IRAM_ATTR timer_group0_isr(void *para)
         TIMERG0.int_clr_timers.t0 = 1;
         uint64_t timer_val = ((uint64_t) TIMERG0.hw_timer[timer_idx].cnt_high) << 32 | TIMERG0.hw_timer[timer_idx].cnt_low;
 
-	    timer0running = false;
-	
+        timer0running = false;
+
         /*Post an event to out example task*/
         evt.type = TEST_WITHOUT_RELOAD;
         evt.group = 0;
@@ -66,9 +66,9 @@ void IRAM_ATTR timer_group0_isr(void *para)
         evt.counter_val = timer_val;
         xQueueSendFromISR(timer_queue, &evt, NULL);
 
-	    /*Enable timer interrupt*/
+        /*Enable timer interrupt*/
         timer_disable_intr(TIMER_GROUP_0, timer_idx);
-    
+
     } 
 }
 
@@ -87,7 +87,7 @@ int init_timer(xQueueHandle informqueue){
     timer_init(timer_group, timer_idx, &config);
     /*Set ISR handler*/
     timer_isr_register(timer_group, timer_idx, timer_group0_isr, (void*) timer_idx, ESP_INTR_FLAG_IRAM, NULL);
-    
+
     return 0;
 }
 
@@ -101,9 +101,9 @@ int start_timer(unsigned int delayMS){
     int timer_group = TIMER_GROUP_0;
     int timer_idx = TIMER_0;
     unsigned long long delay = delayMS;
-    
+
     ESP_LOGI(TIMER_TAG, "Start timer %d mS", delayMS);
-    
+
     timer_pause(timer_group, timer_idx);
     /*Enable timer interrupt*/
     timer_enable_intr(timer_group, timer_idx);
@@ -117,7 +117,7 @@ int start_timer(unsigned int delayMS){
     timer0running = true;
     /*Start timer counter*/
     timer_start(timer_group, timer_idx);
-    
+
     return 0;
 }
 

@@ -16,7 +16,7 @@
    Unless required by applicable law or agreed to in writing, this
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
-*/
+ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -52,36 +52,36 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
     // your_context_t *context = event->context;
     switch (event->event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
-            connected_cb(event);
-            break;
-        case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
-            repclient = NULL;
-			ESP_LOGI(MQTT_TAG, "MQTT disconnected - wait for reconnect");
-            break;
-        case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_UNSUBSCRIBED:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_DATA:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA, msg_id=%d, topic=%s", event->msg_id, event->topic);
-            printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-            printf("DATA=%.*s\r\n", event->data_len, event->data);
-            data_cb(event);
-            break;
-        case MQTT_EVENT_ERROR:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
-            break;
-        default:
-            ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
-            break;
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
+        connected_cb(event);
+        break;
+    case MQTT_EVENT_DISCONNECTED:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
+        repclient = NULL;
+        ESP_LOGI(MQTT_TAG, "MQTT disconnected - wait for reconnect");
+        break;
+    case MQTT_EVENT_SUBSCRIBED:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_UNSUBSCRIBED:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_PUBLISHED:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_DATA:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA, msg_id=%d, topic=%s", event->msg_id, event->topic);
+        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
+        data_cb(event);
+        break;
+    case MQTT_EVENT_ERROR:
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
+        break;
+    default:
+        ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
+        break;
     }
     return ESP_OK;
 }
@@ -91,9 +91,9 @@ static char outtopicbase[30];
 
 /* MQTT connected callback */
 static void connected_cb(esp_mqtt_event_handle_t event){
-	esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
+    esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
 
-	esp_mqtt_client_handle_t client = event->client;
+    esp_mqtt_client_handle_t client = event->client;
 
     char topic[38];
     char startmsg[35];
@@ -118,7 +118,7 @@ static void connected_cb(esp_mqtt_event_handle_t event){
         esp_mqtt_client_publish(client, topic, devlist, strlen(devlist), 0, 0);
 
         ESP_LOGI(MQTT_TAG, "[APP] Start publish, topic: %s", topic);
-		ESP_LOGI(MQTT_TAG, "[APP] Start publish, devlist: %s", devlist);
+        ESP_LOGI(MQTT_TAG, "[APP] Start publish, devlist: %s", devlist);
 
         free(devlist);
         devlist = NULL;
@@ -127,19 +127,19 @@ static void connected_cb(esp_mqtt_event_handle_t event){
 
 /* MQTT data received (subscribed topic receives data) */
 static void data_cb(esp_mqtt_event_handle_t event){
-	esp_mqtt_client_handle_t client = event->client;
+    esp_mqtt_client_handle_t client = event->client;
 
     bool trvcmd = false, trvscan = false;
     if(event->current_data_offset == 0) {
         char *topic = malloc(event->topic_len + 1);
         memcpy(topic, event->topic, event->topic_len);
         topic[event->topic_len] = 0;
-	    if(strstr(topic, "/trv") != NULL)
-	        trvcmd = true;
-	    if(strstr(topic, "/scan") != NULL)
-	        trvscan = true;
+        if(strstr(topic, "/trv") != NULL)
+            trvcmd = true;
+        if(strstr(topic, "/scan") != NULL)
+            trvscan = true;
         if(strstr(topic, "/check") != NULL){
-	        char rsptopic[45];
+            char rsptopic[45];
             char msg[35];
             sprintf(rsptopic, "%s/checkresp", outtopicbase);
             sprintf(msg, "sw ver %s.%s", EQ3_MAJVER, EQ3_MINVER);
@@ -155,18 +155,18 @@ static void data_cb(esp_mqtt_event_handle_t event){
         data[event->data_len] = 0;
         ESP_LOGI(MQTT_TAG, "Handle trv msg");
         handle_request(data);
-	    free(data);
+        free(data);
     }
-    
+
     if(trvscan == true){
         start_scan();
     }
-    
+
 }
 
 /* Publish a status message */
 int send_trv_status(char *status){
-	ESP_LOGI(MQTT_TAG, "send_trv_status");
+    ESP_LOGI(MQTT_TAG, "send_trv_status");
     if(repclient != NULL){
         char topic[38];
         sprintf(topic, "%s/status", outtopicbase);
@@ -181,11 +181,11 @@ int send_device_list(char *list){
         char topic[38];
         sprintf(topic, "%s/devlist", outtopicbase);
         esp_mqtt_client_publish(repclient, topic, list, strlen(list), 0, 0);
-	    free(list);
+        free(list);
     }else{
         if(devlist != NULL)
-	    free(devlist);
-	    ESP_LOGI(MQTT_TAG, "Queue device list message to publish");
+            free(devlist);
+        ESP_LOGI(MQTT_TAG, "Queue device list message to publish");
         devlist = list;
     }
     return 0;
@@ -194,27 +194,27 @@ int send_device_list(char *list){
 static char lwt_topic_buff[38];
 
 int connect_server(char *url, char *user, char *password, char *id){
-	sprintf(lwt_topic_buff, "/%sradout", id);
-	sprintf(intopicbase, "/%sradin", id);
-	sprintf(outtopicbase, "/%sradout", id);
+    sprintf(lwt_topic_buff, "/%sradout", id);
+    sprintf(intopicbase, "/%sradin", id);
+    sprintf(outtopicbase, "/%sradout", id);
 
-	esp_mqtt_client_config_t settings = {
-		#if defined(CONFIG_MQTT_SECURITY_ON)
-		    .port = 8883, // encrypted
-		#else
-		    .port = 1883, // unencrypted
-		#endif
-		    .keepalive = 60,
-		    .lwt_msg = "Heating control offline",
-		    .lwt_qos = 0,
-		    .lwt_retain = 0,
-			.event_handle = mqtt_event_handler,
-			.uri = url,
-			.username = user,
-			.password = password,
-			.client_id = id,
-			.lwt_topic = lwt_topic_buff
-		};
+    esp_mqtt_client_config_t settings = {
+#if defined(CONFIG_MQTT_SECURITY_ON)
+            .port = 8883, // encrypted
+#else
+            .port = 1883, // unencrypted
+#endif
+            .keepalive = 60,
+            .lwt_msg = "Heating control offline",
+            .lwt_qos = 0,
+            .lwt_retain = 0,
+            .event_handle = mqtt_event_handler,
+            .uri = url,
+            .username = user,
+            .password = password,
+            .client_id = id,
+            .lwt_topic = lwt_topic_buff
+    };
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&settings);
     if(client){
