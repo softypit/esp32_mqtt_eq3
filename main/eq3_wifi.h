@@ -7,6 +7,8 @@
 
 void initialise_wifi(void);
 
+bool ismqttconnected(void);
+
 int send_device_list(char *list);
 int send_trv_status(char *status);
 
