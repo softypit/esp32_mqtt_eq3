@@ -148,8 +148,8 @@ static int mongoose_serve_device_list(struct mg_connection *nc){
     int wridx = 0;
     struct found_device *devwalk = NULL;
     int numdevices;
-    
-    if(eq3gap_get_device_list(&devwalk, &numdevices) == EQ3_SCAN_COMPLETE){
+    enum eq3_scanstate listres = eq3gap_get_device_list(&devwalk, &numdevices);
+    if(listres == EQ3_SCAN_COMPLETE){
         
         char *devlisthtml = malloc(strlen(devlisthead) + strlen(devlistfoot) + ((strlen(devlistentry) + 22) * numdevices));
         if(devlisthtml != NULL){
@@ -172,6 +172,10 @@ static int mongoose_serve_device_list(struct mg_connection *nc){
         }else{
             mg_send_head(nc, 501, 0, "Content-Type: text/html");
         }
+    }else if(listres == EQ3_SCAN_UNDERWAY){
+        /* Still scanning */
+        mg_send_head(nc, 200, 39, "Content-Type: text/html");
+        mg_send(nc, "Scan still running - refresh shortly...", 39);
     }else{
         /* No devices found */
         mg_send_head(nc, 200, 16, "Content-Type: text/html");
@@ -274,6 +278,11 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 mongoose_serve_device_list(nc);
             }else if(strcmp(uri, "/status") == 0){
                 mongoose_serve_status(nc);
+            }else if(strcmp(uri, "/scan") == 0){
+                start_scan();
+                mg_send_head(nc, 200, 29, "Content-Type: text/html");
+                mg_send(nc, "Scanning - refresh shortly...", 29);
+                nc->flags |= MG_F_SEND_AND_CLOSE;
             }
 			// Else ... unknown URL
 			else {

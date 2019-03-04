@@ -4,6 +4,7 @@
 
 #define EQ3_MAJVER "1"
 #define EQ3_MINVER "28"
+#define EQ3_EXTRAVER "-beta_1"
 
 void initialise_wifi(void);
 

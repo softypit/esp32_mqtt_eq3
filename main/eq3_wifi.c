@@ -71,7 +71,7 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
             break;
         case MQTT_EVENT_DATA:
-            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA, msg_id=%d, topic=%s", event->msg_id, event->topic);
+            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA, msg_id=%d", event->msg_id);
             printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
             printf("DATA=%.*s\r\n", event->data_len, event->data);
             data_cb(event);
@@ -110,7 +110,7 @@ static void connected_cb(esp_mqtt_event_handle_t event){
 
     /* Publish welcome message to /espradout */
     sprintf(topic, "%s/connect", outtopicbase);
-    sprintf(startmsg, "Heating control v%s.%s active", EQ3_MAJVER, EQ3_MINVER);
+    sprintf(startmsg, "Heating control v%s.%s%s active", EQ3_MAJVER, EQ3_MINVER, EQ3_EXTRAVER);
     esp_mqtt_client_publish(client, topic, startmsg, strlen(startmsg), 0, 0);
 
     ESP_LOGI(MQTT_TAG, "[APP] Start publish, topic: %s", topic);

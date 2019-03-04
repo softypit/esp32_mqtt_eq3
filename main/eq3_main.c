@@ -89,8 +89,6 @@ struct tmrcmd{
     int countdown;
 };
 
-#define runtimer() start_timer(1000)
-
 bool wifistartdelay = true;
 
 struct tmrcmd nextcmd;
@@ -108,6 +106,13 @@ int setnextcmd(int cmd, int time_s){
 
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
+
+
+#define EQ3_CMD_DONE    0
+#define EQ3_CMD_RETRY   1
+#define EQ3_CMD_FAILED  2
+/* Command complete success/fail acknowledgement */
+static int command_complete(bool success);
 
 /* EQ-3 service identifier */
 static esp_gatt_srvc_id_t eq3_service_id = {
@@ -149,28 +154,27 @@ static esp_bt_uuid_t eq3_resp_filter_char_uuid = {
     .uuid = {.uuid128 = {0x2a, 0xeb, 0xe0, 0xf4, 0x90, 0x6c, 0x41, 0xaf, 0x96, 0x09, 0x29, 0xcd, 0x4d, 0x43, 0xe8, 0xd0},},
 };
 
-//static esp_bt_uuid_t notify_descr_uuid = {
-//    .len = ESP_UUID_LEN_16,
-//    .uuid = {.uuid16 = ESP_GATT_UUID_CHAR_CLIENT_CONFIG,},
-//};
-
 /* Current TRV command being sent to EQ-3 */ 
 uint16_t cmd_len = 0;
 uint8_t cmd_val[20] = {0};
 esp_bd_addr_t cmd_bleda;   /* BLE Device Address */
 
 static bool get_server = false;
+static bool connection_open = false;
+static bool ble_operation_in_progress = false;
+static bool outstanding_timer = false;
+
+static void runtimer(void){
+    if(outstanding_timer == false){
+        outstanding_timer = true; 
+        start_timer(1000);
+    }
+}
 
 static esp_gattc_char_elem_t elemres;
 static esp_gattc_char_elem_t *char_elem_result = &elemres;
 
-//static esp_gattc_descr_elem_t descres;
-//static esp_gattc_descr_elem_t *descr_elem_result = &descres;
-
 static bool registered = false;
-
-/* Name reported by EQ-3 valves when scanning */
-static const char remote_device_name[] = "CC-RT-M-BLE";
 
 #define PROFILE_NUM 1
 #define PROFILE_A_APP_ID 0
@@ -197,14 +201,15 @@ static struct gattc_profile_inst gl_profile_tab[PROFILE_NUM] = {
 };
 
 static void gattc_command_error(esp_bd_addr_t bleda, char *error){
-    char statrep[120];
-    int statidx = 0;
-
-    statidx += sprintf(&statrep[statidx], "{");
-    statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
-    statidx += sprintf(&statrep[statidx], "\"error\":\"%s\"}", error);
-    send_trv_status(statrep);
-
+    /* Only send the response if there are no retries available */
+    if(command_complete(false) == EQ3_CMD_FAILED){
+        char statrep[120];
+        int statidx = 0;
+        statidx += sprintf(&statrep[statidx], "{");
+        statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
+        statidx += sprintf(&statrep[statidx], "\"error\":\"%s\"}", error);
+        send_trv_status(statrep);
+    }
     /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
     setnextcmd(EQ3_DISCONNECT, 2);
     runtimer();
@@ -264,8 +269,10 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             ESP_LOGE(GATTC_TAG, "open failed, status %d", p_data->open.status); 
             gattc_command_error(cmd_bleda, "TRV not available");
             break;
+        }else{
+            ESP_LOGI(GATTC_TAG, "open success");
+            connection_open = true;
         }
-        ESP_LOGI(GATTC_TAG, "open success");
         break;
     case ESP_GATTC_CLOSE_EVT:
         /* Profile connection closed */
@@ -273,6 +280,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 	        ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
 	    }else{
 	        ESP_LOGI(GATTC_TAG, "close success");
+            connection_open = false;
 	    }
 	    /* Wait before we connect to the next EQ-3 to send a queued command */
 	    runtimer();
@@ -525,6 +533,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             ESP_LOGI(GATTC_TAG, "eq3 got response 0x%x, 0x%x\n", p_data->notify.value[0], p_data->notify.value[1]);
         }
 
+        /* Notify the successful command */
+        command_complete(true);
         /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
         setnextcmd(EQ3_DISCONNECT, 2);
         runtimer();
@@ -594,6 +604,7 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
 
 #define MAX_CMD_BYTES 6
 #define SET_TIME_BYTES 6
+#define MAX_CMD_RETRIES 3
 
 /* Message queue of EQ-3 messages */
 QueueHandle_t msgQueue = NULL;
@@ -616,6 +627,7 @@ struct eq3cmd{
     esp_bd_addr_t bleda;
     eq3_bt_cmd cmd;
     unsigned char cmdparms[MAX_CMD_BYTES];
+    int retries;
     struct eq3cmd *next;
 };
 
@@ -789,6 +801,7 @@ int handle_request(char *cmdstr){
         newcmd->cmd = command;
         for(parm=0; parm < MAX_CMD_BYTES; parm++)
             newcmd->cmdparms[parm] = cmdparms[parm];
+        newcmd->retries = MAX_CMD_RETRIES;
 	
         while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
             cmdstr++;
@@ -809,20 +822,22 @@ int handle_request(char *cmdstr){
         struct eq3cmd *qwalk = cmdqueue;
         if(cmdqueue == NULL){
             cmdqueue = newcmd;
-	    ESP_LOGI(GATTC_TAG, "Add queue head");
-	}else{
-	    while(qwalk->next != NULL)
-	        qwalk = qwalk->next;
-	    qwalk->next = newcmd;
-	   ESP_LOGI(GATTC_TAG, "Add queue end");
-	}
-	if(timer_running() == true)
-	    ESP_LOGI(GATTC_TAG, "Timer still running!!??");
-		runtimer();
-    }
-    else{
+            ESP_LOGI(GATTC_TAG, "Add queue head");
+        }else{
+            while(qwalk->next != NULL)
+            qwalk = qwalk->next;
+            qwalk->next = newcmd;
+            ESP_LOGI(GATTC_TAG, "Add queue end");
+        }
+        if(ble_operation_in_progress == false){
+            /* Only schedule the command if ble is currently idle */
+            //if(timer_running() == false){
+            //    ESP_LOGI(GATTC_TAG, "Timer not running so starting it");
+                runtimer();
+            //}
+        }
+    }else{
         ESP_LOGI(GATTC_TAG, "Invalid command %s", cmdptr);
-        //free(newcmd);
         return -1;
     }
     return 0;
@@ -839,31 +854,31 @@ static int setup_command(void){
                 cmd_val[1 + parm] = cmdqueue->cmdparms[parm];
             cmd_len = 1 + SET_TIME_BYTES;
             break;
-	case EQ3_BOOST:
+        case EQ3_BOOST:
             cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x01;
-	    cmd_len = 2;
-	    break;
-	case EQ3_UNBOOST:
+            cmd_len = 2;
+            break;
+        case EQ3_UNBOOST:
             cmd_val[0] = PROP_BOOST;
             cmd_val[1] = 0x00;
-	    cmd_len = 2;
-	    break;
-	case EQ3_AUTO:
+            cmd_len = 2;
+            break;
+        case EQ3_AUTO:
             cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x00;
-	    cmd_len = 2;
-	    break;
-	case EQ3_MANUAL:
+            cmd_len = 2;
+            break;
+        case EQ3_MANUAL:
             cmd_val[0] = PROP_MODE_WRITE;
             cmd_val[1] = 0x40;
-	    cmd_len = 2;
-	    break;
-	case EQ3_SETTEMP:
+            cmd_len = 2;
+            break;
+        case EQ3_SETTEMP:
             cmd_val[0] = PROP_TEMPERATURE_WRITE;
             cmd_val[1] = cmdqueue->cmdparms[0];
-	    cmd_len = 2;
-	    break;
+            cmd_len = 2;
+            break;
         case EQ3_OFFSET:
             cmd_val[0] = PROP_OFFSET;
             cmd_val[1] = cmdqueue->cmdparms[0];
@@ -879,23 +894,72 @@ static int setup_command(void){
             cmd_val[1] = 0;
             cmd_len = 2;
             break;
-	default:
-	    ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
-	    break;
-	}
-	memcpy(cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
-	struct eq3cmd *delcmd = cmdqueue;
-	cmdqueue = cmdqueue->next;
-	free(delcmd);
+        default:
+            ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
+            break;
+        }
+        memcpy(cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
+        //struct eq3cmd *delcmd = cmdqueue;
+        //cmdqueue = cmdqueue->next;
+        //free(delcmd);
     }
     return 0;
+}
+
+#define REQUEUE_RETRY
+
+static int command_complete(bool success){
+    bool deletehead = false;
+    int rc = EQ3_CMD_RETRY;
+    if(success == true){
+        deletehead = true;
+        rc = EQ3_CMD_DONE;
+    }else{
+        /* Command failed - retry if there are any retries left */
+        
+        /* Normal operation - retry the same command until all attempts are exhausted 
+         * OR
+         * define REQUEUE_RETRY to push the command to the end of the list to retry once all other currently queued commands are complete. */        
+        if(--cmdqueue->retries <= 0){
+            deletehead = true;
+            ESP_LOGE(GATTC_TAG, "Command failed - retries exhausted");
+            rc = EQ3_CMD_FAILED;
+        }else{
+#ifdef REQUEUE_RETRY
+            ESP_LOGE(GATTC_TAG, "Command failed - requeue for retry");
+            /* If there are no other queued commands just retry this one */
+            if(cmdqueue->next != NULL){
+                struct eq3cmd *mvcmd = cmdqueue;
+                while(mvcmd->next != NULL)
+	                mvcmd = mvcmd->next;
+                /* Attach head to tail */
+                mvcmd->next = cmdqueue;
+                cmdqueue = cmdqueue->next;
+                /* Detach head from new tail */
+                mvcmd->next->next = NULL;
+            }
+#else
+            ESP_LOGE(GATTC_TAG, "Command failed - retry");
+#endif  
+        }
+    }
+    if(deletehead){
+        /* Delete this command from the queue */
+        struct eq3cmd *delcmd = cmdqueue;
+	    cmdqueue = cmdqueue->next;
+	    free(delcmd);
+    }
+    return rc;
 }
 
 /* Run the next EQ-3 command from the list */
 static int run_command(void){
     if(cmdqueue != NULL){
-        ESP_LOGI(GATTC_TAG, "Send next command");
+        ESP_LOGI(GATTC_TAG, "Sending next command");
         setup_command();
+        ESP_LOGI(GATTC_TAG, "Open virtual server connection for BLE device:");
+        esp_log_buffer_hex(GATTC_TAG, cmd_bleda, sizeof(esp_bd_addr_t));
+        ble_operation_in_progress = true;
         esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, cmd_bleda, 0x00, true);
         /*
 		#define BLE_ADDR_PUBLIC         0x00
@@ -1055,17 +1119,21 @@ void app_main(){
 	
 	    /* Timer message handling */
 	    if(xQueueReceive(timer_queue, &evt, 0)){
-            //ESP_LOGI(GATTC_TAG, "Timer0 returned");
+            ESP_LOGI(GATTC_TAG, "Timer0 event");
+            outstanding_timer = false;
             
-	        if(nextcmd.running == true){
+            if(nextcmd.running == true){
                 //ESP_LOGI(GATTC_TAG, "countdown is %d\n", nextcmd.countdown);
-	            if(--nextcmd.countdown <= 0){
-		            switch(nextcmd.cmd){
-		                case EQ3_DISCONNECT:
-			                ESP_LOGI(GATTC_TAG, "RQ close");
-	                        esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
-                            ESP_LOGI(GATTC_TAG, "RQ sent");
-			            break;
+                if(--nextcmd.countdown <= 0){
+                    switch(nextcmd.cmd){
+                        case EQ3_DISCONNECT:
+                            if(connection_open == true){
+                                ESP_LOGI(GATTC_TAG, "Close virtual server connection");
+                                esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
+                            }
+                            runtimer();
+                            ble_operation_in_progress = false;
+                            break;
                         case START_WIFI:
                             ESP_LOGI(GATTC_TAG, "Init wifi");
                             bootWiFi(wifidone, confparms);
@@ -1081,7 +1149,12 @@ void app_main(){
 		            runtimer();
 		        }
 	        }else{
-	            run_command();
+                if(ble_operation_in_progress == false){
+	                run_command();
+                }else{
+                    /* Do we need a failsafe check here in case the BLE state machine is stuck? */
+                    runtimer();
+                }
 	        }
 	    }
 	    //ESP_LOGI(GATTC_TAG, "Loop");
