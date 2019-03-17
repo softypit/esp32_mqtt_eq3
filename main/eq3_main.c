@@ -916,10 +916,15 @@ static int setup_command(void){
 static int command_complete(bool success){
     bool deletehead = false;
     int rc = EQ3_CMD_RETRY;
+
     if(success == true){
         deletehead = true;
         rc = EQ3_CMD_DONE;
-    }else{
+    }
+    else if(cmdqueue == NULL) {
+        rc = EQ3_CMD_DONE;
+    }
+    else{
         /* Command failed - retry if there are any retries left */
         
         /* Normal operation - retry the same command until all attempts are exhausted 
@@ -948,7 +953,7 @@ static int command_complete(bool success){
 #endif  
         }
     }
-    if(deletehead){
+    if(deletehead && cmdqueue != NULL){
         /* Delete this command from the queue */
         struct eq3cmd *delcmd = cmdqueue;
 	    cmdqueue = cmdqueue->next;
