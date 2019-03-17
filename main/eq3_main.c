@@ -568,6 +568,10 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, status = %d", p_data->disconnect.reason);
         //esp_ble_gattc_app_unregister(gl_profile_tab[PROFILE_A_APP_ID].gattc_if);
         ble_operation_in_progress = false;
+
+        if(p_data->disconnect.reason != ESP_GATT_CONN_TERMINATE_LOCAL_HOST)
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+
         break;
     default:
         ESP_LOGI(GATTC_TAG, "Unhandled_EVT %d", event);
