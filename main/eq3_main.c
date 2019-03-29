@@ -506,8 +506,13 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     ESP_LOGI(GATTC_TAG, "eq3 no boost");
                     statidx += sprintf(&statrep[statidx], "\"inactive\"");
                 }
+                statidx += sprintf(&statrep[statidx], ",\"window\":");
                 if(tempval & WINDOW){
                     ESP_LOGI(GATTC_TAG, "eq3 window open");
+                    statidx += sprintf(&statrep[statidx], "\"open\"");
+                }else{
+                    ESP_LOGI(GATTC_TAG, "eq3 window closed");
+                    statidx += sprintf(&statrep[statidx], "\"closed\"");
                 }
                 statidx += sprintf(&statrep[statidx], ",\"state\":");
                 if(tempval & LOCKED){

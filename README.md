@@ -87,7 +87,7 @@ This can be used as an acknowledgement of a successful command to remote mqtt cl
 | boost | boost-mode is active / inactiv | `"boost"`:`"active"`<br>`"boost"`:`"inactive"` | 1.20 |
 | state | front-panel controls are locked / unlocked | `"state"`:`"locked"`<br>`"state"`:`"unlocked"` | 1.20 |
 | battery | battery state | `"battery"`:`"GOOD"`<br>`"battery"`:`"LOW"` | 1.20 |
-<sup>1)</sup> Changed in current dev-branch: `"eco"` is removed because it was misinterpreted
+| window | window-mode is active / inactive | `"window"`:`"open"`<br>`"window"`:`"closed"` | |
 
 ### Read current status
 
