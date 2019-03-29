@@ -492,8 +492,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     ESP_LOGI(GATTC_TAG, "eq3 set manual");
                     statidx += sprintf(&statrep[statidx], "\"manual\"");
                 }else if(tempval & AWAY){
-                    ESP_LOGI(GATTC_TAG, "eq3 set eco");
-                    statidx += sprintf(&statrep[statidx], "\"eco\"");
+                    ESP_LOGI(GATTC_TAG, "eq3 set holiday");
+                    statidx += sprintf(&statrep[statidx], "\"holiday\"");
                 }else{
                     ESP_LOGI(GATTC_TAG, "eq3 set auto");
                     statidx += sprintf(&statrep[statidx], "\"auto\"");
