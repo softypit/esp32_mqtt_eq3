@@ -631,6 +631,8 @@ struct eq3cmd{
     struct eq3cmd *next;
 };
 
+static void enqueue_command(struct eq3cmd *newcmd);
+
 struct eq3cmd *cmdqueue = NULL;
 
 /* Task to handle local UART and accept EQ-3 commands for test/debug */
@@ -819,16 +821,8 @@ int handle_request(char *cmdstr){
 	
         newcmd->next = NULL;
     
-        struct eq3cmd *qwalk = cmdqueue;
-        if(cmdqueue == NULL){
-            cmdqueue = newcmd;
-            ESP_LOGI(GATTC_TAG, "Add queue head");
-        }else{
-            while(qwalk->next != NULL)
-            qwalk = qwalk->next;
-            qwalk->next = newcmd;
-            ESP_LOGI(GATTC_TAG, "Add queue end");
-        }
+        enqueue_command(newcmd);
+
         if(ble_operation_in_progress == false){
             /* Only schedule the command if ble is currently idle */
             //if(timer_running() == false){
@@ -841,7 +835,43 @@ int handle_request(char *cmdstr){
         return -1;
     }
     return 0;
-}    
+}
+
+static void enqueue_command(struct eq3cmd *newcmd)
+{
+    struct eq3cmd *qwalk = cmdqueue;
+    struct eq3cmd *lastCommandForDevice = NULL;
+
+    if(cmdqueue == NULL)
+    {
+        cmdqueue = newcmd;
+        ESP_LOGI(GATTC_TAG, "Add queue head");
+    }
+    else
+    {
+        if(memcmp(qwalk->bleda, newcmd->bleda, sizeof(esp_bd_addr_t)) == 0)
+            lastCommandForDevice = qwalk;
+
+        while(qwalk->next != NULL)
+        {
+            qwalk = qwalk->next;
+            if(memcmp(qwalk->bleda, newcmd->bleda, sizeof(esp_bd_addr_t)) == 0)
+                lastCommandForDevice = qwalk;
+        }
+
+        //don't add the same command again if it already is the last command for a specific device
+        if(lastCommandForDevice != NULL
+                && lastCommandForDevice->cmd == newcmd->cmd
+                && memcmp(lastCommandForDevice->cmdparms, newcmd->cmdparms, MAX_CMD_BYTES) == 0)
+        {
+            ESP_LOGI(GATTC_TAG, "Command still pending");
+            return;
+        }
+
+        qwalk->next = newcmd;
+        ESP_LOGI(GATTC_TAG, "Add queue end");
+     }
+}
 
 /* Get the next command off the queue and encode the characteristic parameters */
 static int setup_command(void){
