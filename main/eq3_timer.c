@@ -35,7 +35,7 @@
 #define TEST_WITHOUT_RELOAD   0   /*!< example of auto-reload mode */
 #define TEST_WITH_RELOAD   1      /*!< example without auto-reload mode */
 
-bool timer0running = false;
+static bool timer0running = false;
 
 xQueueHandle timer_queue;
 
@@ -113,7 +113,7 @@ int start_timer(unsigned int delayMS){
     //timer_set_alarm_value(timer_group, timer_idx, TIMER_INTERVAL0_SEC * TIMER_SCALE - TIMER_FINE_ADJ);
     timer_set_alarm_value(timer_group, timer_idx, delay * TIMER_SCALE_MS);
     /* Enable the alarm */
-    timer_set_alarm(timer_group, timer_idx, 1);
+    timer_set_alarm(timer_group, timer_idx, TIMER_ALARM_EN);
     timer0running = true;
     /*Start timer counter*/
     timer_start(timer_group, timer_idx);

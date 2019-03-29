@@ -83,7 +83,7 @@ This can be used as an acknowledgement of a successful command to remote mqtt cl
 | trv | Bluetooth-Address of the corroesponding thermostat | `"trv":"ab:cd:ef:gh:ij:kl"` | 1.20 |
 | temp | the current target room-temperature is set | `"temp":"20.0"` | 1.20 |
 | offsetTemp | the current offset temperature is set | `"offsetTemp":"0.0"` | 1.30 (upstream merge in dev) |
-| mode | the current thermostate programm mode<br><br>`"auto"` = internal temperature/time program is used<br>`"eco"` = internal temperature/time program is used and eco mode is currently active<br>`"manual"` = internal temperature/time program is disabled | `"mode":"auto"`<br> `"mode":"eco"`<br> `"mode":"manual"` | 1.20 |
+| mode | the current thermostate programm mode<br><br>`"auto"` = internal temperature/time program is used<br>`"manual"` = internal temperature/time program is disabled<br>`"holiday"` = holiday mode is used | `"mode":"auto"`<br> `"mode":"manual"`<br> `"mode":"holiday"` | 1.20 <sup>1)</sup> |
 | boost | boost-mode is active / inactiv | `"boost"`:`"active"`<br>`"boost"`:`"inactive"` | 1.20 |
 | state | front-panel controls are locked / unlocked | `"state"`:`"locked"`<br>`"state"`:`"unlocked"` | 1.20 |
 | battery | battery state | `"battery"`:`"GOOD"`<br>`"battery"`:`"LOW"` | 1.20 |

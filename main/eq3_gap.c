@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include "nvs.h"
 #include "nvs_flash.h"
-//#include "controller.h"
 #include "driver/uart.h"
 
 #include "esp_log.h"
@@ -43,6 +42,7 @@
 #include "esp_bt_main.h"
 
 #include "eq3_wifi.h"
+#include "eq3_gap.h"
 
 #define EQ3_DBG_TAG "EQ3_CTRL"
 
@@ -62,15 +62,10 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 static void scan_done(void);
 
 static bool gap_scanning = false;
+static bool gap_initialised = false;
 
-/* Device list handling */
-struct found_device {
-  esp_bd_addr_t bda;
-  int rssi;
-  struct found_device *next;
-};
-struct found_device *found_devices = NULL;
-int num_devices = 0;
+static struct found_device *found_devices = NULL;
+static int num_devices = 0;
 
 static void free_found_devices(){
     struct found_device *nextdev, *thisdev = found_devices;
@@ -246,6 +241,7 @@ void start_scan(){
     }
 
     gap_scanning = true;
+    gap_initialised = true;
     
     ret = esp_ble_gap_set_scan_params(&ble_scan_params);
     
@@ -283,6 +279,23 @@ static void scan_done(){
         //free(report);
     }else{
         ESP_LOGI(EQ3_DBG_TAG, "None");
+    }
+}
+
+/* Make the device list available to others */
+/* Be aware there is no semaphore lock on the devlist so make sure to never call start_scan() 
+ * when parsing a list returned from this call */
+enum eq3_scanstate eq3gap_get_device_list(struct found_device **devlist, int *numdevs){
+    if(gap_initialised == false)
+        return EQ3_NO_SCAN_RESULTS;
+    if(gap_scanning == false){
+        if(devlist != NULL)
+            *devlist = found_devices;
+        if(numdevs != NULL)
+            *numdevs = num_devices;
+        return EQ3_SCAN_COMPLETE;
+    }else{
+        return EQ3_SCAN_UNDERWAY;
     }
 }
 

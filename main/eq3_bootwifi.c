@@ -22,7 +22,11 @@
 #include <mongoose.h>
 #include "eq3_bootwifi.h"
 #include "sdkconfig.h"
-#include "eq3_seleAP.h"
+#include "eq3_gap.h"
+#include "eq3_wifi.h"
+
+/* Webcontent */
+#include "eq3_htmlpages.h"
 
 // If the structure of a record saved for a subsequent reboot changes
 // then consider using semver to change the version number or else
@@ -48,82 +52,62 @@ typedef struct {
 	tcpip_adapter_ip_info_t ipInfo; // Optional static IP information
 } connection_info_t;
 
-static bootwifi_callback_t g_callback = NULL; // Callback function to be invoked when we have finished.
-static bootwifi_parms_t g_parms = NULL;
-
-static int g_mongooseStarted = 0; // Has the mongoose server started?
-static int g_mongooseStopRequest = 0; // Request to stop the mongoose server.
+static connection_info_t connectionInfo;
+int getConnectionInfo(connection_info_t *pConnectionInfo);
 
 // Forward declarations
 static void saveConnectionInfo(connection_info_t *pConnectionInfo);
 static void becomeAccessPoint();
 static void bootWiFi2();
 static bool haveconninfo = false;
-static char tag[] = "bootwifi";
+static char tag[] = "websrv";
+
+static bootwifi_callback_t g_callback = NULL; // Callback function to be invoked when we have finished.
+static bootwifi_parms_t g_parms = NULL;
+
+bool sta_configured = false; // Are we in sta mode?
 
 
+/* ===================== Mongoose webserver code ========================= */
 
-
+static int g_mongooseStarted = 0; // Has the mongoose server started?
+static int g_mongooseStopRequest = 0; // Request to stop the mongoose server.
 
 /**
  * Convert a Mongoose event type to a string.  Used for debugging.
  */
 static char *mongoose_eventToString(int ev) {
-	static char temp[100];
 	switch (ev) {
-	case MG_EV_CONNECT:
-		return "MG_EV_CONNECT";
-	case MG_EV_ACCEPT:
-		return "MG_EV_ACCEPT";
-	case MG_EV_CLOSE:
-		return "MG_EV_CLOSE";
-	case MG_EV_SEND:
-		return "MG_EV_SEND";
-	case MG_EV_RECV:
-		return "MG_EV_RECV";
-	case MG_EV_HTTP_REQUEST:
-		return "MG_EV_HTTP_REQUEST";
-	case MG_EV_MQTT_CONNACK:
-		return "MG_EV_MQTT_CONNACK";
-	case MG_EV_MQTT_CONNACK_ACCEPTED:
-		return "MG_EV_MQTT_CONNACK";
-	case MG_EV_MQTT_CONNECT:
-		return "MG_EV_MQTT_CONNECT";
-	case MG_EV_MQTT_DISCONNECT:
-		return "MG_EV_MQTT_DISCONNECT";
-	case MG_EV_MQTT_PINGREQ:
-		return "MG_EV_MQTT_PINGREQ";
-	case MG_EV_MQTT_PINGRESP:
-		return "MG_EV_MQTT_PINGRESP";
-	case MG_EV_MQTT_PUBACK:
-		return "MG_EV_MQTT_PUBACK";
-	case MG_EV_MQTT_PUBCOMP:
-		return "MG_EV_MQTT_PUBCOMP";
-	case MG_EV_MQTT_PUBLISH:
-		return "MG_EV_MQTT_PUBLISH";
-	case MG_EV_MQTT_PUBREC:
-		return "MG_EV_MQTT_PUBREC";
-	case MG_EV_MQTT_PUBREL:
-		return "MG_EV_MQTT_PUBREL";
-	case MG_EV_MQTT_SUBACK:
-		return "MG_EV_MQTT_SUBACK";
-	case MG_EV_MQTT_SUBSCRIBE:
-		return "MG_EV_MQTT_SUBSCRIBE";
-	case MG_EV_MQTT_UNSUBACK:
-		return "MG_EV_MQTT_UNSUBACK";
-	case MG_EV_MQTT_UNSUBSCRIBE:
-		return "MG_EV_MQTT_UNSUBSCRIBE";
-	case MG_EV_WEBSOCKET_HANDSHAKE_REQUEST:
-		return "MG_EV_WEBSOCKET_HANDSHAKE_REQUEST";
-	case MG_EV_WEBSOCKET_HANDSHAKE_DONE:
-		return "MG_EV_WEBSOCKET_HANDSHAKE_DONE";
-	case MG_EV_WEBSOCKET_FRAME:
-		return "MG_EV_WEBSOCKET_FRAME";
+		case MG_EV_CONNECT:							return "MG_EV_CONNECT";
+		case MG_EV_ACCEPT:							return "MG_EV_ACCEPT";
+		case MG_EV_CLOSE:							return "MG_EV_CLOSE";
+		case MG_EV_SEND:							return "MG_EV_SEND";
+		case MG_EV_RECV:							return "MG_EV_RECV";
+		case MG_EV_HTTP_REQUEST:					return "MG_EV_HTTP_REQUEST";
+		case MG_EV_MQTT_CONNACK:					return "MG_EV_MQTT_CONNACK";
+		case MG_EV_MQTT_CONNACK_ACCEPTED:			return "MG_EV_MQTT_CONNACK";
+		case MG_EV_MQTT_CONNECT:					return "MG_EV_MQTT_CONNECT";
+		case MG_EV_MQTT_DISCONNECT:					return "MG_EV_MQTT_DISCONNECT";
+		case MG_EV_MQTT_PINGREQ:					return "MG_EV_MQTT_PINGREQ";
+		case MG_EV_MQTT_PINGRESP:					return "MG_EV_MQTT_PINGRESP";
+		case MG_EV_MQTT_PUBACK:						return "MG_EV_MQTT_PUBACK";
+		case MG_EV_MQTT_PUBCOMP:					return "MG_EV_MQTT_PUBCOMP";
+		case MG_EV_MQTT_PUBLISH:					return "MG_EV_MQTT_PUBLISH";
+		case MG_EV_MQTT_PUBREC:						return "MG_EV_MQTT_PUBREC";
+		case MG_EV_MQTT_PUBREL:						return "MG_EV_MQTT_PUBREL";
+		case MG_EV_MQTT_SUBACK:						return "MG_EV_MQTT_SUBACK";
+		case MG_EV_MQTT_SUBSCRIBE:					return "MG_EV_MQTT_SUBSCRIBE";
+		case MG_EV_MQTT_UNSUBACK:					return "MG_EV_MQTT_UNSUBACK";
+		case MG_EV_MQTT_UNSUBSCRIBE:				return "MG_EV_MQTT_UNSUBSCRIBE";
+		case MG_EV_WEBSOCKET_HANDSHAKE_REQUEST:		return "MG_EV_WEBSOCKET_HANDSHAKE_REQUEST";
+		case MG_EV_WEBSOCKET_HANDSHAKE_DONE:		return "MG_EV_WEBSOCKET_HANDSHAKE_DONE";
+		case MG_EV_WEBSOCKET_FRAME:					return "MG_EV_WEBSOCKET_FRAME";
 	}
+
+	static char temp[100];
 	sprintf(temp, "Unknown event: %d", ev);
 	return temp;
 } //eventToString
-
 
 // Convert a Mongoose string type to a string.
 static char *mgStrToStr(struct mg_str mgStr) {
@@ -133,6 +117,89 @@ static char *mgStrToStr(struct mg_str mgStr) {
 	return retStr;
 } // mgStrToStr
 
+/* Serve the configuration webpage */
+static int mongoose_serve_config_page(struct mg_connection *nc){
+    int rc = getConnectionInfo(&connectionInfo);
+    char *htmlstr = malloc(strlen(selectap) + 100);
+    const char nullstr[] = "";
+    char *sptr = (char *)nullstr, *pptr = (char *)nullstr, *murlptr = (char *)nullstr, *muserptr = (char *)nullstr, *mpassptr = (char *)nullstr, *midptr = (char *)nullstr;
+    char *ibuf = (char *)nullstr, *gbuf = (char *)nullstr, *mbuf = (char *)nullstr;
+    char ipbuf[20], gwbuf[20], maskbuf[20];
+    if(rc == 0){
+        sptr = connectionInfo.ssid;
+        pptr = connectionInfo.password;
+        murlptr = connectionInfo.mqtturl;
+        muserptr = connectionInfo.mqttuser;
+        mpassptr = connectionInfo.mqttpass; 
+        midptr = connectionInfo.mqttid;
+        ibuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.ip, ipbuf, sizeof(ipbuf));
+        gbuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.gw, gwbuf, sizeof(gwbuf));
+        mbuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.netmask, maskbuf, sizeof(maskbuf));
+    }
+    sprintf(htmlstr, selectap, sptr, pptr, murlptr, muserptr, mpassptr, midptr, ibuf == NULL ? nullstr : ipbuf, gbuf == NULL ? nullstr : gbuf, mbuf == NULL ? nullstr : mbuf);
+    mg_send_head(nc, 200, strlen(htmlstr), "Content-Type: text/html");
+	mg_send(nc, htmlstr, strlen(htmlstr));
+    nc->flags |= MG_F_SEND_AND_CLOSE;
+    return 0;
+}
+
+/* Serve a found device list page */
+static int mongoose_serve_device_list(struct mg_connection *nc){
+    int wridx = 0;
+    struct found_device *devwalk = NULL;
+    int numdevices;
+    enum eq3_scanstate listres = eq3gap_get_device_list(&devwalk, &numdevices);
+    if(listres == EQ3_SCAN_COMPLETE){
+        
+        char *devlisthtml = malloc(strlen(devlisthead) + strlen(devlistfoot) + ((strlen(devlistentry) + 22) * numdevices));
+        if(devlisthtml != NULL){
+            /* Copy header into buffer */
+            wridx += sprintf(&devlisthtml[wridx], devlisthead);
+            /* Collate device list in buffer */
+            while(devwalk != NULL){
+                wridx += sprintf(&devlisthtml[wridx], devlistentry, devwalk->bda[0], devwalk->bda[1], devwalk->bda[2], 
+                     devwalk->bda[3], devwalk->bda[4], devwalk->bda[5], devwalk->rssi); 	
+                devwalk = devwalk->next;
+            }
+        
+            /* Copy footer into buffer */
+            wridx += sprintf(&devlisthtml[wridx], devlistfoot);
+        
+            mg_send_head(nc, 200, wridx, "Content-Type: text/html");
+            mg_send(nc, devlisthtml, wridx);
+        
+            free(devlisthtml);
+        }else{
+            mg_send_head(nc, 501, 0, "Content-Type: text/html");
+        }
+    }else if(listres == EQ3_SCAN_UNDERWAY){
+        /* Still scanning */
+        mg_send_head(nc, 200, 39, "Content-Type: text/html");
+        mg_send(nc, "Scan still running - refresh shortly...", 39);
+    }else{
+        /* No devices found */
+        mg_send_head(nc, 200, 16, "Content-Type: text/html");
+        mg_send(nc, "No devices found", 16);
+    }
+    nc->flags |= MG_F_SEND_AND_CLOSE;
+    return 0;
+}
+
+static int mongoose_serve_status(struct mg_connection *nc){
+    if(sta_configured == false){
+        mg_send_head(nc, 200, strlen(apstatus), "Content-Type: text/html");
+        mg_send(nc, apstatus, strlen(apstatus));
+        nc->flags |= MG_F_SEND_AND_CLOSE;
+    }else{
+        bool connected = ismqttconnected();
+        char *htmlstr = malloc(strlen(connectedstatus) + 100);
+        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, connected == true ? "connected" : "not connected");
+        mg_send_head(nc, 200, strlen(htmlstr), "Content-Type: text/html");
+        mg_send(nc, htmlstr, strlen(htmlstr));
+        nc->flags |= MG_F_SEND_AND_CLOSE;
+    }            
+    return 0;
+}
 
 /**
  * Handle mongoose events.  These are mostly requests to process incoming
@@ -156,21 +223,20 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
 				ESP_LOGD(tag, "- Set the new connection info to ssid: %s, password: %s",
 					connectionInfo.ssid, connectionInfo.password);
 				mg_send_head(nc, 200, 0, "Content-Type: text/plain");
-			} if (strcmp(uri, "/") == 0) {
-				mg_send_head(nc, 200, sizeof(selectAP_html), "Content-Type: text/html");
-				mg_send(nc, selectAP_html, sizeof(selectAP_html));
-			}
-			// Handle /ssidSelected
-			// This is an incoming form with properties:
-			// * ssid - The ssid of the network to connect against.
-			// * password - the password to use to connect.
-			// * ip - Static IP address ... may be empty
-			// * gw - Static GW address ... may be empty
-			// * netmask - Static netmask ... may be empty
-			if(strcmp(uri, "/ssidSelected") == 0) {
-				// We have received a form page containing the details.  The form body will
-				// contain:
-				// ssid=<value>&password=<value>
+                nc->flags |= MG_F_SEND_AND_CLOSE;
+			}else if (strcmp(uri, "/") == 0) {
+                if(sta_configured == false)
+				    mongoose_serve_config_page(nc);
+                else
+                    mongoose_serve_status(nc);
+			}else if(strcmp(uri, "/ssidSelected") == 0) {
+                // Handle /ssidSelected
+			    // This is an incoming form with properties:
+			    // * ssid - The ssid of the network to connect against.
+			    // * password - the password to use to connect.
+			    // * ip - Static IP address ... may be empty
+			    // * gw - Static GW address ... may be empty
+			    // * netmask - Static netmask ... may be empty
 				ESP_LOGD(tag, "- body: %.*s", message->body.len, message->body.p);
 				connection_info_t connectionInfo;
 				mg_get_http_var(&message->body, "ssid",	connectionInfo.ssid, SSID_SIZE);
@@ -207,12 +273,24 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
 				mg_send_head(nc, 200, 0, "Content-Type: text/plain");
 				saveConnectionInfo(&connectionInfo);
 				bootWiFi2();
-			} // url is "/ssidSelected"
+                nc->flags |= MG_F_SEND_AND_CLOSE;
+			}else if(strcmp(uri, "/getdevices") == 0){
+                mongoose_serve_device_list(nc);
+            }else if(strcmp(uri, "/status") == 0){
+                mongoose_serve_status(nc);
+            }else if(strcmp(uri, "/scan") == 0){
+                start_scan();
+                mg_send_head(nc, 200, 29, "Content-Type: text/html");
+                mg_send(nc, "Scanning - refresh shortly...", 29);
+                nc->flags |= MG_F_SEND_AND_CLOSE;
+            }
 			// Else ... unknown URL
 			else {
-				mg_send_head(nc, 404, 0, "Content-Type: text/plain");
+                mongoose_serve_config_page(nc);
+				//mg_send_head(nc, 404, 0, "Content-Type: text/plain");
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
 			}
-			nc->flags |= MG_F_SEND_AND_CLOSE;
+			//nc->flags |= MG_F_SEND_AND_CLOSE;
 			free(uri);
 			break;
 		} // MG_EV_HTTP_REQUEST
@@ -250,10 +328,12 @@ static void mongooseTask(void *data) {
 	mg_mgr_free(&mgr);
 	g_mongooseStarted = 0;
 
+#ifdef OLD_MODE
 	// Since we HAVE ended mongoose, time to invoke the callback.
 	if (g_callback) {
 		g_callback(1);
 	}
+#endif
 
 	ESP_LOGD(tag, "<< mongooseTask");
 	vTaskDelete(NULL);
@@ -262,7 +342,7 @@ static void mongooseTask(void *data) {
 
 #define MAXCONNATTEMPTS 25
 static int connattempts = 0;
-static connection_info_t connectionInfo;
+//static connection_info_t connectionInfo;
 static void becomeStation(connection_info_t *pConnectionInfo);
 static void becomeAccessPoint();
 
@@ -342,7 +422,9 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 			ESP_LOGI(tag, "* - Our IP address is: " IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
 			ESP_LOGI(tag, "********************************************");
             connattempts = 0;
-			g_mongooseStopRequest = 1; // Stop mongoose (if it is running).
+
+#ifdef OLD_MODE
+            g_mongooseStopRequest = 1; // Stop mongoose (if it is running).
 			// Invoke the callback if Mongoose has NOT been started ... otherwise
 			// we will invoke the callback when mongoose has ended.
 			if (!g_mongooseStarted) {
@@ -350,6 +432,15 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 					g_callback(1);
 				}
 			} // Mongoose was NOT started
+#else
+            if (!g_mongooseStarted){
+				g_mongooseStarted = 1;
+				xTaskCreatePinnedToCore(&mongooseTask, "bootwifi_mongoose_task", 8000, NULL, 5, NULL, 0);
+			}
+            if (g_callback) {
+				g_callback(1);
+            }
+#endif
 			break;
 		} // SYSTEM_EVENT_STA_GOTIP
 
@@ -364,7 +455,8 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
 /**
  * Retrieve the connection info.  A rc==0 means ok.
  */
-static int getConnectionInfo(connection_info_t *pConnectionInfo) {
+//static int getConnectionInfo(connection_info_t *pConnectionInfo) {
+int getConnectionInfo(connection_info_t *pConnectionInfo) {
 	nvs_handle handle;
 	size_t size;
 	esp_err_t err;
@@ -427,8 +519,6 @@ static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
 	ESP_ERROR_CHECK(nvs_commit(handle));
 	nvs_close(handle);
 } // setConnectionInfo
-
-bool sta_configured = false;
 
 /**
  * Become a station connecting to an existing access point.
