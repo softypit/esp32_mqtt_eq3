@@ -13,5 +13,8 @@ typedef void (*bootwifi_parms_t)(char *, char *, char *, char *);
 void bootWiFi();
 void restart_station(void);
 
+bool ntp_enabled(void);
+char *getntpserver(void);
+char *getntptimezone(void);
 
 #endif /* MAIN_BOOTWIFI_H_ */

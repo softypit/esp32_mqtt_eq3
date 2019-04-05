@@ -16,6 +16,7 @@ The main problem with centrally controlling them is the limited range of BLE. Th
   + [JSON-Format of status topic](#json-format-of-status-topic)
   + [Read current status](#read-current-status)
   + [MQTT Topics](#mqtt-topics)
+  + [Web interface](#web-interface)
 * [Usage Summary](#usage-summary)
 * [Developer notes](#developer-notes)
 * [Testing](#testing)
@@ -32,7 +33,7 @@ When using calorBT some very basic security is employed. This security however l
 
 On first use the ESP32 will start in access-point mode appearing as 'HeatingController'. Connect to this AP (password is 'password' or unset) and browse to the device IP address (192.168.4.1). The device configuration parameters can be set here:  
 
-| Parameter | Description | Exampels |
+| Parameter | Description | Examples |
 | ------------- | ------------- | ------------- |
 | ssid | the AP to connect to for normal operation | |
 | password | the password for the AP | |
@@ -40,9 +41,14 @@ On first use the ESP32 will start in access-point mode appearing as 'HeatingCont
 | mqttuser | mqtt broker username | |
 | mqttpass | mqtt broker password | |
 | mqttid | the unique id for this device to use with the mqtt broker __(max 20 characters)__ | livingroom |
+| ntp enabled | enable network time protocol support | |
+| ntp server | url for ntp server | pool.ntp.org |
+| timezone | timezone in TZ format | GMT0BST,M3.5.0/2,M11.5.0/2 |
 | ip | fixed IP for WiFi network (leave blank to DHCP) | |
 | gw | gateway IP for WiFi network (leave blank for DHCP) | |
 | netmask | netmask for WiFi network (leave blank for DHCP) | |
+
+Once the ESP32 is running in client mode the configuration page can be accessed on the webserver at /config
 
 #### Reset configuration
 
@@ -60,9 +66,9 @@ where the device is indicated by its bluetooth address (MAC)
 
 ### Supported commands
 
-| Parameter | Description | Paramters | Exampels | Stable since |
+| Parameter | Description | Parameters | Examples | Stable since |
 | ------------- | ------------- | ------------- | ------------- | ------------- |
-| settime | sets the current time on the valve | settime has an additional parameter of the hexadecimal encoded current time.<br>parm is 12 characters hexadecimal yymmddhhMMss (e.g. 13010c0c0a00 is 2019/Jan/12 12:00.00) | *`/<mqttid>radin/trv <eq-3-address> settemp 13010c0c0a00`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl settemp 13010c0c0a00` | v1.20 |
+| settime | sets the current time on the valve | settime has an optional parameter of the hexadecimal encoded current time.<br>parm is 12 characters hexadecimal yymmddhhMMss (e.g. 13010c0c0a00 is 2019/Jan/12 12:00.00)<br>if no parameter is submitted and ntp is enabled the ntp time (with timezone offset) will be used | *`/<mqttid>radin/trv <eq-3-address> settemp 13010c0c0a00`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl settemp 13010c0c0a00` | v1.20 |
 | boost | sets the boost mode | -none - | *`/<mqttid>radin/trv <eq-3-address> boost`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl boost` | v1.20 |
 | unboost | reset to unboost mode | -none - | *`/<mqttid>radin/trv <eq-3-address> unboost`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl unboost` | v1.20 |
 | lock | locks the front-panel controls | -none - | *`/<mqttid>radin/trv <eq-3-address> lock`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl lock` | v1.20 |
@@ -80,7 +86,7 @@ This can be used as an acknowledgement of a successful command to remote mqtt cl
 
 | Key | Description | Exampls | Since Version |
 | ------------- |  ------------- |  ------------- |  ------------- |
-| trv | Bluetooth-Address of the corroesponding thermostat | `"trv":"ab:cd:ef:gh:ij:kl"` | 1.20 |
+| trv | Bluetooth-Address of the corresponding thermostat | `"trv":"ab:cd:ef:gh:ij:kl"` | 1.20 |
 | temp | the current target room-temperature is set | `"temp":"20.0"` | 1.20 |
 | offsetTemp | the current offset temperature is set | `"offsetTemp":"0.0"` | 1.30 (upstream merge in dev) |
 | mode | the current thermostate programm mode<br><br>`"auto"` = internal temperature/time program is used<br>`"manual"` = internal temperature/time program is disabled<br>`"holiday"` = holiday mode is used | `"mode":"auto"`<br> `"mode":"manual"`<br> `"mode":"holiday"` | 1.20 <sup>1)</sup> |
@@ -103,7 +109,12 @@ It is probably not advisable to poll the valve with the unboost command.
 | `/<mqttid>radout/devlist` | list of avalibile bluetooth devices | X | |
 | `/<mqttid>radout/status ` | show a status message each time a trv is contacted | X | |
 | `/<mqttid>radin/trv <command> [param]` | sends a command to the trv | | X |
-| `/<mqttid>radin/scan` | scan for avalibile bluetooth devices | | X |
+| `/<mqttid>radin/scan` | scan for available bluetooth devices | | X |
+
+### Web interface
+
+When running in client mode the ESP32 presents a web interface that can be used to control TRVs and administer the EQ3-mqtt application.
+Software OTA feature can be used to apply new software binary files available in future without the need for usb/serial connection.
 
 ## Usage Summary
 
@@ -143,7 +154,7 @@ mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl 
 <sup>2)</sup> Many aliases for "Eqiva eQ-3 Bluetooth Smart" devices exists. Most of all are characterized by a combination of "Eqiva", "eQ-3", "Bluetooth", "Smart".<br>
 &nbsp;&nbsp;&nbsp;&nbsp;e.g. `"eQ-3 AG Eqiva BLUETOOTH® Smart"`, `"eqiva Bluetooth Smart Radiator Thermostat"`, `"eQ-3 eqiva Heizkörperthermostat Typ N"`, `"Eqiva Bluetooth Smart"`
 
-**Don't by Models without Bluetooth logo. They won't work with this "hub". e.g. "Eqiva Model N, 132231K0A"**
+**Don't buy Models without Bluetooth logo. They won't work with this "hub". e.g. "Eqiva Model N, 132231K0A"**
 
 ## Credits
 

@@ -41,6 +41,11 @@
 #include "esp_gatt_defs.h"
 #include "esp_bt_main.h"
 
+#include "esp_sleep.h"
+#include "lwip/err.h"
+#include "lwip/apps/sntp.h"
+
+#include "eq3_main.h"
 #include "eq3_gap.h"
 #include "eq3_timer.h"
 #include "eq3_wifi.h"
@@ -53,6 +58,7 @@
 #define EQ3_DISCONNECT 0
 #define START_WIFI     1
 #define RESTART_WIFI   2
+#define EQ3_REBOOT     3
 
 /* Request ids for TRV */
 #define PROP_ID_QUERY            0x00
@@ -89,15 +95,16 @@ struct tmrcmd{
     int countdown;
 };
 
-bool wifistartdelay = true;
+static bool wifistartdelay = true;
+static bool reboot_requested = false;
 
-struct tmrcmd nextcmd;
+static struct tmrcmd nextcmd;
 
-int setnextcmd(int cmd, int time_s){
+static int setnextcmd(int cmd, int time_s){
     if(nextcmd.running != true){
         nextcmd.cmd = cmd;
-	    nextcmd.countdown = time_s;
-	    nextcmd.running = true;
+        nextcmd.countdown = time_s;
+        nextcmd.running = true;
     }else{
         ESP_LOGI(GATTC_TAG, "setnextcmd when timer running!");
     }
@@ -209,6 +216,7 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
         statidx += sprintf(&statrep[statidx], "\"trv\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", bleda[0], bleda[1], bleda[2], bleda[3], bleda[4], bleda[5]);
         statidx += sprintf(&statrep[statidx], "\"error\":\"%s\"}", error);
         send_trv_status(statrep);
+        eq3_add_log(statrep);
     }
     /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
     setnextcmd(EQ3_DISCONNECT, 2);
@@ -277,13 +285,13 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     case ESP_GATTC_CLOSE_EVT:
         /* Profile connection closed */
         if(param->close.status != ESP_GATT_OK){
-	        ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
-	    }else{
-	        ESP_LOGI(GATTC_TAG, "close success");
+            ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
+        }else{
+            ESP_LOGI(GATTC_TAG, "close success");
             connection_open = false;
-	    }
-	    /* Wait before we connect to the next EQ-3 to send a queued command */
-	    runtimer();
+        }
+        /* Wait before we connect to the next EQ-3 to send a queued command */
+        runtimer();
         break;
     case ESP_GATTC_CFG_MTU_EVT:
         /* MTU has been set */
@@ -293,9 +301,9 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             break;
         }
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_CFG_MTU_EVT, Status %d, MTU %d, conn_id %d", param->cfg_mtu.status, param->cfg_mtu.mtu, param->cfg_mtu.conn_id);
-	    /* Search for the EQ-3 service */
-	    esp_ble_gattc_search_service(gattc_if, param->cfg_mtu.conn_id, NULL);
-	
+        /* Search for the EQ-3 service */
+        esp_ble_gattc_search_service(gattc_if, param->cfg_mtu.conn_id, NULL);
+
         break;
     case ESP_GATTC_SEARCH_RES_EVT: {
         /* Search result is in */
@@ -422,13 +430,13 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     
             }else{
                 ESP_LOGE(GATTC_TAG, "EQ-3 characteristics not found");
-                gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+                gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "Not an EQ-3");
                 break;
             }
         }else{
             ESP_LOGE(GATTC_TAG, "EQ-3 service not available from this server!");
             /* Wait 2 seconds for background GATTC operations then disconnect */
-            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "Not an EQ-3");
             break;
         }
         break;
@@ -437,7 +445,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         if (p_data->reg_for_notify.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "REG FOR NOTIFY failed: error status = %d", p_data->reg_for_notify.status);
             /* Disconnect */
-            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "EQ-3 notify error");
         }else{
             /* Now we're ready to send our command to the EQ-3 trv */
             ESP_LOGI(GATTC_TAG, "Send eq3 command");
@@ -470,16 +478,16 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                 statidx += sprintf(&statrep[statidx], "\"temp\":\"%d.%d\"", tempval, temphalf);
             }
             if(p_data->notify.value_len >= 14){
-            	int8_t offsetval, offsethalf = 0;
-            	offsetval = p_data->notify.value[14];
-            	offsetval -= 7; // The offset temperature is encoded in steps of 0.5°C between -3.5°C and 3.5°C
+                int8_t offsetval, offsethalf = 0;
+                offsetval = p_data->notify.value[14];
+                offsetval -= 7; // The offset temperature is encoded in steps of 0.5°C between -3.5°C and 3.5°C
 
-				if(offsetval & 0x01)
-					offsethalf = 5;
-				offsetval >>= 1;
-				ESP_LOGI(GATTC_TAG, "eq3 offsettemp is %d.%d C", offsetval, offsethalf);
-				statidx += sprintf(&statrep[statidx], ",\"offsetTemp\":\"%d.%d\"", offsetval, offsethalf);
-			}
+                if(offsetval & 0x01)
+                    offsethalf = 5;
+                offsetval >>= 1;
+                ESP_LOGI(GATTC_TAG, "eq3 offsettemp is %d.%d C", offsetval, offsethalf);
+                statidx += sprintf(&statrep[statidx], ",\"offsetTemp\":\"%d.%d\"", offsetval, offsethalf);
+            }
             if(p_data->notify.value_len > 3){
                 tempval = p_data->notify.value[3];
                 ESP_LOGI(GATTC_TAG, "eq3 valve %d%% open\n", tempval);
@@ -534,6 +542,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             statidx += sprintf(&statrep[statidx], "}");
             /* Send the status report we just collated */
             send_trv_status(statrep);
+            /* Add to the log */
+            eq3_add_log(statrep);
         }else{
             ESP_LOGI(GATTC_TAG, "eq3 got response 0x%x, 0x%x\n", p_data->notify.value[0], p_data->notify.value[1]);
         }
@@ -562,7 +572,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         if (p_data->write.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "write char failed, error status = %x", p_data->write.status);
             /* Disconnect */
-            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "Unable to write to EQ-3");
             break;
         }
         ESP_LOGI(GATTC_TAG, "write char success ");
@@ -575,7 +585,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         ble_operation_in_progress = false;
 
         if(p_data->disconnect.reason != ESP_GATT_CONN_TERMINATE_LOCAL_HOST)
-            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "TRV error");
+            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "Device unavailable");
 
         break;
     default:
@@ -672,33 +682,40 @@ static void uart_task()
     while(1) {
         //Read data from UART
         int len = uart_read_bytes(uart_num, data, BUF_SIZE - 1, 20 / portTICK_RATE_MS);
-	    if(cmdidx + len < 1024){
-	        int cpylen = 0;
-	        while(cpylen < len){
-	            if(data[cpylen] == '\n' || data[cpylen] == '\r'){
-		            if(cmdidx > 0 && msgQueue != NULL){
-		                uint8_t *newMsg = (uint8_t *)malloc(cmdidx + 1);
-		                if(newMsg != NULL){
-			                memcpy(newMsg, cmd_buf, cmdidx);
-			                newMsg[cmdidx] = 0;
-			                ESP_LOGI(GATTC_TAG, "Send");
-		                    xQueueSend( msgQueue, (void *)&newMsg, ( TickType_t ) 0 );
-			    
-			                /* TODO - check if the above failed */
-			    	            
-			            }
-		            }
-		            cmdidx = 0;
-		            cpylen++;
-		        }else{
-	                cmd_buf[cmdidx++] = data[cpylen++];  
-		        }
-	        }
-	    }
+        if(cmdidx + len < 1024){
+            int cpylen = 0;
+            while(cpylen < len){
+                if(data[cpylen] == '\n' || data[cpylen] == '\r'){
+                    if(cmdidx > 0 && msgQueue != NULL){
+                        uint8_t *newMsg = (uint8_t *)malloc(cmdidx + 1);
+                        if(newMsg != NULL){
+                            memcpy(newMsg, cmd_buf, cmdidx);
+                            newMsg[cmdidx] = 0;
+                            ESP_LOGI(GATTC_TAG, "Send");
+                            xQueueSend( msgQueue, (void *)&newMsg, ( TickType_t ) 0 );
+    
+                            /* TODO - check if the above failed */
+
+                        }
+                    }
+                    cmdidx = 0;
+                    cpylen++;
+                }else{
+                    cmd_buf[cmdidx++] = data[cpylen++];  
+                }
+            }
+        }
         //Write data back to UART
         uart_write_bytes(uart_num, (const char*) data, len);
     }
 } 
+
+/* Schedule a reboot after commands have completed or very shortly */ 
+void schedule_reboot(void){
+    reboot_requested = true;
+    if(ble_operation_in_progress == false)
+        runtimer();
+}
 
 /* Handle an EQ-3 command from uart or mqtt */
 int handle_request(char *cmdstr){
@@ -719,45 +736,64 @@ int handle_request(char *cmdstr){
     if(strncmp((const char *)cmdptr, "settime", 7) == 0){
         start = true;
 
-        if(strlen(cmdptr + 8) < 12){
+        if(cmdptr[8] != 0 && strlen(cmdptr + 8) < 12){
             //free(newcmd);
             /* TODO more validation of time argument */
             ESP_LOGI(GATTC_TAG, "Invalid time argument %s", cmdptr + 8);
             return -1;
         }
-        char hexdigit[3];
-        int dig;
-        hexdigit[2] = 0;
-        for(dig=0; dig < SET_TIME_BYTES; dig++){
-            hexdigit[0] = *(cmdptr + 8 + (dig * 2));
-            hexdigit[1] = *(cmdptr + 9 + (dig * 2));
-            cmdparms[dig] = (unsigned char)strtol(hexdigit, NULL, 16);
+        if(isalnum((int)cmdptr[8])){
+            char hexdigit[3];
+            int dig;
+            hexdigit[2] = 0;
+            for(dig=0; dig < SET_TIME_BYTES; dig++){
+                hexdigit[0] = *(cmdptr + 8 + (dig * 2));
+                hexdigit[1] = *(cmdptr + 9 + (dig * 2));
+                cmdparms[dig] = (unsigned char)strtol(hexdigit, NULL, 16);
+            }
+        }else{
+            /* TODO - only if time is synchronised */
+            if(ntp_enabled() == true){
+                time_t now = 0;
+                struct tm timeinfo = { 0 };
+                time(&now);
+                localtime_r(&now, &timeinfo);
+                cmdparms[0] = timeinfo.tm_year - 100;
+                cmdparms[1] = timeinfo.tm_mon + 1;
+                cmdparms[2] = timeinfo.tm_mday;
+                cmdparms[3] = timeinfo.tm_hour;
+                cmdparms[4] = timeinfo.tm_min;
+                cmdparms[5] = timeinfo.tm_sec;
+            }else{
+                ESP_LOGI(GATTC_TAG, "Cannot set valve time via ntp as ntp is not enabled");
+                return -1;
+            }
         }
-	command = EQ3_SETTIME;
+        command = EQ3_SETTIME;
     }
     if(strncmp((const char *)cmdptr, "boost", 5) == 0){
         start = true;
-	    command = EQ3_BOOST;
+        command = EQ3_BOOST;
     }
     if(strncmp((const char *)cmdptr, "unboost", 7) == 0){
         start = true;
-	    command = EQ3_UNBOOST;
+        command = EQ3_UNBOOST;
     }
     if(strncmp((const char *)cmdptr, "auto", 4) == 0){
         start = true;
-	    command = EQ3_AUTO;
+        command = EQ3_AUTO;
     }
     if(strncmp((const char *)cmdptr, "manual", 6) == 0){
         start = true;
-	    command = EQ3_MANUAL;
+        command = EQ3_MANUAL;
     }
     if(strncmp((const char *)cmdptr, "lock", 4) == 0){
         start = true;
-	    command = EQ3_LOCK;
+        command = EQ3_LOCK;
     }
     if(strncmp((const char *)cmdptr, "unlock", 6) == 0){
         start = true;
-	    command = EQ3_UNLOCK;
+        command = EQ3_UNLOCK;
     }
     if(strncmp((const char *)cmdptr, "offset", 6) == 0){
         char *endmsg;
@@ -784,7 +820,7 @@ int handle_request(char *cmdstr){
             cmdparms[0] = (unsigned char)(inttemp << 1);
             if(temp - (float)inttemp >= 0.5)
                 cmdparms[0] |= 0x01;
-	    }else{
+        }else{
             ESP_LOGI(GATTC_TAG, "Invalid temperature %0.1f requested", temp);
             //free(newcmd);
             return -1;
@@ -806,29 +842,31 @@ int handle_request(char *cmdstr){
     if(start == true){
         int parm;
 
+        eq3_add_log(cmdstr);
+        
         newcmd = malloc(sizeof(struct eq3cmd));
 
-	// TODO - what if malloc fails?
+        // TODO - what if malloc fails?
 
         newcmd->cmd = command;
         for(parm=0; parm < MAX_CMD_BYTES; parm++)
             newcmd->cmdparms[parm] = cmdparms[parm];
         newcmd->retries = MAX_CMD_RETRIES;
-	
+
         while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
             cmdstr++;
     
         int adidx = ESP_BD_ADDR_LEN;
         while(adidx > 0){
             newcmd->bleda[ESP_BD_ADDR_LEN - adidx] = strtol(cmdstr, &cmdstr, 16);
-	        while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
+            while(*cmdstr != 0 && !isxdigit((int)*cmdstr))
                 cmdstr++;
-	        adidx--;
+            adidx--;
         }
     
         ESP_LOGI(GATTC_TAG, "Requested address:");
         esp_log_buffer_hex(GATTC_TAG, newcmd->bleda, sizeof(esp_bd_addr_t));
-	
+
         newcmd->next = NULL;
     
         enqueue_command(newcmd);
@@ -976,7 +1014,7 @@ static int command_complete(bool success){
             if(cmdqueue->next != NULL){
                 struct eq3cmd *mvcmd = cmdqueue;
                 while(mvcmd->next != NULL)
-	                mvcmd = mvcmd->next;
+                    mvcmd = mvcmd->next;
                 /* Attach head to tail */
                 mvcmd->next = cmdqueue;
                 cmdqueue = cmdqueue->next;
@@ -991,8 +1029,8 @@ static int command_complete(bool success){
     if(deletehead && cmdqueue != NULL){
         /* Delete this command from the queue */
         struct eq3cmd *delcmd = cmdqueue;
-	    cmdqueue = cmdqueue->next;
-	    free(delcmd);
+        cmdqueue = cmdqueue->next;
+        free(delcmd);
     }
     return rc;
 }
@@ -1007,10 +1045,10 @@ static int run_command(void){
         ble_operation_in_progress = true;
         esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, cmd_bleda, 0x00, true);
         /*
-		#define BLE_ADDR_PUBLIC         0x00
-		#define BLE_ADDR_RANDOM         0x01
-		#define BLE_ADDR_PUBLIC_ID      0x02
-		#define BLE_ADDR_RANDOM_ID      0x03
+        #define BLE_ADDR_PUBLIC         0x00
+        #define BLE_ADDR_RANDOM         0x01
+        #define BLE_ADDR_PUBLIC_ID      0x02
+        #define BLE_ADDR_RANDOM_ID      0x03
          */
         //TODO: BLE_ADDR_PUBLIC Verify https://github.com/espressif/esp-idf/blob/a0468b2bd64c48d093309a4b3d623a7343c205c0/components/bt/bluedroid/stack/include/stack/bt_types.h
     }
@@ -1022,15 +1060,15 @@ static char *usr = NULL, *pass = NULL, *url = NULL, *id = NULL;
 void confparms(char *mqtturl, char *mqttuser, char *mqttpass, char *mqttid){
     if(usr != NULL){
         free(usr);
-	usr = NULL;
+        usr = NULL;
     }
     if(pass != NULL){
         free(pass);
-	pass = NULL;
+        pass = NULL;
     }
     if(url != NULL){
         free(url);
-	url = NULL;
+        url = NULL;
     }
     if(mqtturl != NULL && mqtturl[0] != 0){
         if(strstr(mqtturl, "//") != NULL){
@@ -1055,18 +1093,55 @@ void confparms(char *mqtturl, char *mqttuser, char *mqttpass, char *mqttid){
     }
 }
 
-/* Callback when we're associated with an AP */
+/* Callback when we're associated with an AP or have fallen back into STA mode */
 void wifidone(int rc){
     static bool server_started = false;
     if(rc == 0){
         /* We are an AP */
-        ESP_LOGI(GATTC_TAG, "WiFi connection failed - I am an access point for a few minutes\n"); 
+        ESP_LOGI(GATTC_TAG, "WiFi connection failed - entering AP mode for 5 minutes\n"); 
         /* Max 5 minutes as AP then we retry station mode */
         setnextcmd(RESTART_WIFI, 300);
         runtimer();
     }else{
         /* We are station and connected */
-        ESP_LOGI(GATTC_TAG, "!!!!!!!!!!!!!!!!!!!! Wifi setup done !!!!!!!!!!!!!!!!!!!\n");
+        ESP_LOGI(GATTC_TAG, "WiFi network connected\n");
+        
+        /* If ntp is configured start up sntp and synchronise the time */
+        char *ntpserver = getntpserver();
+        char *ntptimezone = getntptimezone();
+        if(ntp_enabled() == true && ntpserver[0] != 0){
+            ESP_LOGI(GATTC_TAG, "Initializing SNTP");
+            sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        
+            sntp_setservername(0, ntpserver);
+            sntp_init();
+        
+            // wait for time to be set
+            time_t now = 0;
+            struct tm timeinfo = { 0 };
+            int retry = 0;
+            const int retry_count = 10;
+            while(timeinfo.tm_year < (2019 - 1900) && ++retry < retry_count) {
+                ESP_LOGI(GATTC_TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+                vTaskDelay(2000 / portTICK_PERIOD_MS);
+                time(&now);
+                localtime_r(&now, &timeinfo);
+            }
+            char strftime_buf[64];
+        
+//#define TZVAL "GMT0BST,M3.5.0/2,M11.1.0"
+//        setenv("TZ", TZVAL, 1);
+        
+            setenv("TZ", (const char *)ntptimezone, 1);
+            tzset();
+            localtime_r(&now, &timeinfo);
+            strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+            ESP_LOGI(GATTC_TAG, "The current date/time is: %s", strftime_buf);
+            eq3_add_log((char *)"WiFi connected");
+        }else{
+            ESP_LOGI(GATTC_TAG, "SNTP not enabled\n");
+        }
+        
         if(server_started == false){
             connect_server(url, usr, pass, id);
             server_started = true;
@@ -1116,6 +1191,9 @@ void app_main(){
         return;
     }
 
+    eq3_log_init();
+    eq3_add_log((char *)"Boot");
+
     /* Start uart task and create msg and timer queues */ 
     xTaskCreate(uart_task, "uart_task", 4096, NULL, 10, NULL);    
     msgQueue = xQueueCreate( 10, sizeof( uint8_t * ) );
@@ -1123,11 +1201,11 @@ void app_main(){
 
     if( msgQueue == NULL ){
         /* Queue was not created and must not be used. */
-	    ESP_LOGE(GATTC_TAG, "Queue create failed");
+        ESP_LOGE(GATTC_TAG, "Queue create failed");
     }
     if( timer_queue == NULL ){
         /* Queue was not created and must not be used. */
-	    ESP_LOGE(GATTC_TAG, "Timer queue create failed");
+        ESP_LOGE(GATTC_TAG, "Timer queue create failed");
     }
     
     /* Initialise timer0 */
@@ -1156,14 +1234,14 @@ void app_main(){
     timer_event_t evt;
     while(1){
         /* Receive messages from uart */
-	    if( xQueueReceive( msgQueue, (void *)&msg, (portTICK_PERIOD_MS * 25))){
-	        char *msgptr = (char *)msg;
-	        handle_request(msgptr);
-	        free(msg);	    
-	    }
-	
-	    /* Timer message handling */
-	    if(xQueueReceive(timer_queue, &evt, 0)){
+        if( xQueueReceive( msgQueue, (void *)&msg, (portTICK_PERIOD_MS * 25))){
+            char *msgptr = (char *)msg;
+            handle_request(msgptr);
+            free(msg);	    
+        }
+
+        /* Timer message handling */
+        if(xQueueReceive(timer_queue, &evt, 0)){
             ESP_LOGI(GATTC_TAG, "Timer0 event (nextcmd.running=%d, ble_operation_in_progress=%d)", nextcmd.running, ble_operation_in_progress);
             outstanding_timer = false;
             
@@ -1186,22 +1264,26 @@ void app_main(){
                             ESP_LOGI(GATTC_TAG, "Becoming WiFi client again\n");
                             restart_station();
                             break;
-			
-		            }
-		            nextcmd.running = false;
-		        }else{
-		            runtimer();
-		        }
-	        }else{
+
+                    }
+                    nextcmd.running = false;
+                }else{
+                    runtimer();
+                }
+            }else{
                 if(ble_operation_in_progress == false){
-	                run_command();
+                    run_command();
+                    /* If there are no outstanding commands we can reboot if required */
+                    if(ble_operation_in_progress == false && reboot_requested == true){
+                        esp_restart();
+                    }
                 }else{
                     /* Do we need a failsafe check here in case the BLE state machine is stuck? */
                     runtimer();
                 }
-	        }
-	    }
-	    //ESP_LOGI(GATTC_TAG, "Loop");
+            }
+        }
+        //ESP_LOGI(GATTC_TAG, "Loop");
     }
 }
 
