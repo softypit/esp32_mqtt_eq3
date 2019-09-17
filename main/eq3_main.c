@@ -585,7 +585,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         ble_operation_in_progress = false;
 
         if(p_data->disconnect.reason != ESP_GATT_CONN_TERMINATE_LOCAL_HOST)
-            gattc_command_error(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, "Device unavailable");
+            gattc_command_error(cmd_bleda, "Device unavailable");
 
         break;
     default:
