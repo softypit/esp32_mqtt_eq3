@@ -222,7 +222,8 @@ static int mongoose_serve_content(struct mg_connection *nc, char *content, bool 
 /* Serve the configuration webpage */
 static int mongoose_serve_config_page(struct mg_connection *nc){
     int rc = getConnectionInfo(&connectionInfo);
-    char *htmlstr = malloc(strlen(selectap) + 100);
+    //char *htmlstr = malloc(strlen(selectap) + 100);
+    char *htmlstr = malloc(2500);
     const char nullstr[] = "";
     char *sptr = (char *)nullstr, *pptr = (char *)nullstr, *murlptr = (char *)nullstr, *muserptr = (char *)nullstr, *mpassptr = (char *)nullstr, *midptr = (char *)nullstr;
     char *ibuf = (char *)nullstr, *gbuf = (char *)nullstr, *mbuf = (char *)nullstr;
@@ -235,11 +236,11 @@ static int mongoose_serve_config_page(struct mg_connection *nc){
         mpassptr = connectionInfo.mqttpass; 
         midptr = connectionInfo.mqttid;
         if(connectionInfo.ipInfo.ip.addr != 0)
-            ibuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.ip, ipbuf, sizeof(ipbuf));
+            ibuf = (char *)inet_ntop(AF_INET, &connectionInfo.ipInfo.ip, ipbuf, sizeof(ipbuf));
         if(connectionInfo.ipInfo.gw.addr != 0)
-            gbuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.gw, gwbuf, sizeof(gwbuf));
+            gbuf = (char *)inet_ntop(AF_INET, &connectionInfo.ipInfo.gw, gwbuf, sizeof(gwbuf));
         if(connectionInfo.ipInfo.netmask.addr != 0)
-            mbuf = inet_ntop(AF_INET, &connectionInfo.ipInfo.netmask, maskbuf, sizeof(maskbuf));
+            mbuf = (char *)inet_ntop(AF_INET, &connectionInfo.ipInfo.netmask, maskbuf, sizeof(maskbuf));
     }
     sprintf(htmlstr, selectap, sptr, pptr, murlptr, muserptr, mpassptr, midptr, connectionInfo.ntpenabled != 0 ? "checked=\"checked\"" : "", connectionInfo.ntpserver, connectionInfo.ntptimezone, ibuf == NULL ? nullstr : ibuf, gbuf == NULL ? nullstr : gbuf, mbuf == NULL ? nullstr : mbuf);
     mongoose_serve_content(nc, htmlstr, true);
@@ -350,7 +351,7 @@ static int mongoose_serve_status(struct mg_connection *nc){
         nc->flags |= MG_F_SEND_AND_CLOSE;
     }else{
         bool connected = ismqttconnected();
-        char *htmlstr = malloc(strlen(connectedstatus) + 100);
+        char *htmlstr = malloc(strlen(connectedstatus) + strlen(connectionInfo.mqtturl) + strlen(connectionInfo.mqttuser) + strlen(connectionInfo.mqttpass) + strlen(connectionInfo.mqttid) + 15);
         sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, connected == true ? "connected" : "not connected");
         mongoose_serve_content(nc, htmlstr, true);
         free(htmlstr);
@@ -482,7 +483,7 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 char devstr[19];
                 char cmdstr[16];
                 char valstr[15];
-                char request[40];
+                char request[50];
                 mg_get_http_var(&message->body, "device", devstr, 18);
                 mg_get_http_var(&message->body, "command", cmdstr, 15);
                 mg_get_http_var(&message->body, "value", valstr, 14);

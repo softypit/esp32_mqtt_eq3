@@ -2,7 +2,7 @@
 #define EQ3_MAIN_H
 
 #define EQ3_MAJVER "1"
-#define EQ3_MINVER "44"
+#define EQ3_MINVER "45"
 #define EQ3_EXTRAVER "-beta"
 
 void eq3_log_init(void);
