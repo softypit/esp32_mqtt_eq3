@@ -31,6 +31,8 @@ When using calorBT some very basic security is employed. This security however l
 
 ### Configuration
 
+To quickly flash the application to a ESP32, download the latest release from https://github.com/softypit/esp32_mqtt_eq3/releases and flash it via esptool, using `esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 115200 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 ota_data_initial.bin 0x1000 bootloader.bin 0x10000 eq3_trv_control.bin 0x8000 partitions.bin` in a Linux terminal with [esptool](https://github.com/espressif/esptool) installed.
+
 On first use the ESP32 will start in access-point mode appearing as 'HeatingController'. Connect to this AP (password is 'password' or unset) and browse to the device IP address (192.168.4.1). The device configuration parameters can be set here:  
 
 | Parameter | Description | Examples |
