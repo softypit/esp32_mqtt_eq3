@@ -1143,8 +1143,8 @@ void wifidone(int rc){
         }
         
         if(server_started == false){
-            connect_server(url, usr, pass, id);
-            server_started = true;
+            if(connect_server(url, usr, pass, id) == 0)
+                server_started = true;
         }
     }
     return;

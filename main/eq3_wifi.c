@@ -47,6 +47,7 @@ static void data_cb(esp_mqtt_event_handle_t event);
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event);
 
 static esp_mqtt_client_handle_t repclient = NULL;
+static bool mqtt_config_error = false;
 static char *devlist = NULL;
 
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event){
@@ -84,15 +85,21 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event){
     return ESP_OK;
 }
 
-/* Inbound topic prefix */
-static char intopicbase[30];
-/* Outbound topic prefix */
-static char outtopicbase[30];
-/* LastWillTestament topic (same as outbound topic currently but keep separate in case we want to change it) */
-static char lwt_topic_buff[38];
+#define IN_TOPIC_LEN     30
+#define OUT_TOPIC_LEN    30
+#define LWT_TOPIC_LEN    38
 
-bool ismqttconnected(void){
-    return repclient == NULL ? false : true;
+/* Inbound topic prefix */
+static char intopicbase[IN_TOPIC_LEN];
+/* Outbound topic prefix */
+static char outtopicbase[OUT_TOPIC_LEN];
+/* LastWillTestament topic (same as outbound topic currently but keep separate in case we want to change it) */
+static char lwt_topic_buff[LWT_TOPIC_LEN];
+
+mqttconnstate ismqttconnected(void){
+    if(mqtt_config_error == true)
+        return MQTT_CONFIG_ERROR;
+    return repclient == NULL ? MQTT_NOT_CONNECTED : MQTT_CONNECTED;
 }
 
 /* MQTT connected callback */
@@ -151,7 +158,7 @@ static void data_cb(esp_mqtt_event_handle_t event){
             char rsptopic[45];
             char msg[35];
             sprintf(rsptopic, "%s/checkresp", outtopicbase);
-            sprintf(msg, "sw ver %s.%s", EQ3_MAJVER, EQ3_MINVER);
+            sprintf(msg, "sw ver %s.%s%s", EQ3_MAJVER, EQ3_MINVER, EQ3_EXTRAVER);
             esp_mqtt_client_publish(client, rsptopic, msg, strlen(msg), 0, 0);
         }
         ESP_LOGI(MQTT_TAG, "[APP] Publish topic: %s", topic);
@@ -201,9 +208,17 @@ int send_device_list(char *list){
 }
 
 int connect_server(char *url, char *user, char *password, char *id){
-    sprintf(lwt_topic_buff, "/%sradout", id);
-    sprintf(intopicbase, "/%sradin", id);
-    sprintf(outtopicbase, "/%sradout", id);
+    int rc = 0;
+    mqtt_config_error = false;
+    
+    if(id == NULL || url == NULL){
+        mqtt_config_error = true;
+        return -1;
+    }
+    
+    snprintf(lwt_topic_buff, LWT_TOPIC_LEN, "/%sradout", id);
+    snprintf(intopicbase, IN_TOPIC_LEN, "/%sradin", id);
+    snprintf(outtopicbase, OUT_TOPIC_LEN,  "/%sradout", id);
 
     esp_mqtt_client_config_t settings = {
 #if defined(CONFIG_MQTT_SECURITY_ON)
@@ -230,7 +245,9 @@ int connect_server(char *url, char *user, char *password, char *id){
         ESP_LOGI(MQTT_TAG, "[APP] Settings.client_id: %s", settings.client_id);
     }else{
         ESP_LOGE(MQTT_TAG, "MQTT client failed to start");
+        mqtt_config_error = true;
+        rc = -1;
     }
 
-    return 0;
+    return rc;
 }

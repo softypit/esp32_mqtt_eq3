@@ -4,7 +4,8 @@
 
 void initialise_wifi(void);
 
-bool ismqttconnected(void);
+typedef enum {MQTT_NOT_CONNECTED = 0, MQTT_CONNECTED, MQTT_CONFIG_ERROR}mqttconnstate;
+mqttconnstate ismqttconnected(void);
 
 int send_device_list(char *list);
 int send_trv_status(char *status);

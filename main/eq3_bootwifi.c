@@ -350,9 +350,22 @@ static int mongoose_serve_status(struct mg_connection *nc){
         mongoose_serve_content(nc, (char *)apstatus, true);
         nc->flags |= MG_F_SEND_AND_CLOSE;
     }else{
-        bool connected = ismqttconnected();
+        char status[14];
+        mqttconnstate connected = ismqttconnected();
+        switch(connected){
+            case MQTT_CONFIG_ERROR:
+                sprintf(status, "config error");
+                break;
+            case MQTT_CONNECTED:
+                sprintf(status, "connected");
+                break;
+            case MQTT_NOT_CONNECTED:
+            default:
+                sprintf(status, "not connected");
+                break;
+        }
         char *htmlstr = malloc(strlen(connectedstatus) + strlen(connectionInfo.mqtturl) + strlen(connectionInfo.mqttuser) + strlen(connectionInfo.mqttpass) + strlen(connectionInfo.mqttid) + 15);
-        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, connected == true ? "connected" : "not connected");
+        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, status);
         mongoose_serve_content(nc, htmlstr, true);
         free(htmlstr);
         nc->flags |= MG_F_SEND_AND_CLOSE;
@@ -387,6 +400,27 @@ static int mongoose_serve_ota_result(struct mg_connection *nc){
     return 0;
 }
 
+/* Get an argument value from the url query-string */
+static char *getqueryarg(const char *argstr, const char *argname){
+    char *tmpptr, *endptr, *retptr = NULL;
+    if((tmpptr = strstr(argstr, argname)) != NULL){
+        while(*tmpptr != '=' && *tmpptr != 0)
+            tmpptr++;
+        if(*tmpptr != 0){
+            int querylen;
+            tmpptr++;
+            endptr = tmpptr + 1;
+            while(*endptr != '&' && *endptr != 0)
+                endptr++;
+            querylen = (int)endptr - (int)tmpptr;
+            retptr = (char *)malloc(querylen + 1);
+            strncpy(retptr, tmpptr, querylen);
+            retptr[querylen] = 0;
+        }
+    }
+    return retptr;
+}
+
 /**
  * Handle mongoose events.  These are mostly requests to process incoming
  * browser requests.  The ones we handle are:
@@ -406,12 +440,32 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 ESP_LOGI(tag, "http query: %s", query);
             
             if (strcmp(uri, "/set") ==0 ) {
-                //connection_info_t connectionInfo;
-//fix
-                saveConnectionInfo(&connectionInfo);
-                ESP_LOGD(tag, "- Set the new connection info to ssid: %s, password: %s",
-                    connectionInfo.ssid, connectionInfo.password);
-                mg_send_head(nc, 200, 0, "Content-Type: text/plain");
+                char *devstr, *cmdstr, *valstr;
+                char request[50];
+                
+                devstr = getqueryarg(query, "device");
+                cmdstr = getqueryarg(query, "command");
+                valstr = getqueryarg(query, "value");
+                if(devstr != NULL && cmdstr != NULL){
+                    if(valstr != NULL)
+                        sprintf(request, "%s %s %s", devstr, cmdstr, valstr);
+                    else
+                        sprintf(request, "%s %s", devstr, cmdstr);
+                    ESP_LOGI(tag, "Http set command %s\n", request);
+                    if(handle_request(request) == 0){
+                        mg_send_head(nc, 200, 0, "Content-Type: text/plain");
+                    }else{
+                        mg_send_head(nc, 400, 0, "Content-Type: text/plain");
+                    }
+                }else{
+                    mg_send_head(nc, 400, 0, "Content-Type: text/plain");
+                }
+                if(devstr != NULL)
+                    free(devstr);
+                if(cmdstr != NULL)
+                    free(cmdstr);
+                if(valstr != NULL)
+                    free(valstr);
                 nc->flags |= MG_F_SEND_AND_CLOSE;
             }else if (strcmp(uri, "/") == 0) {
                 if(sta_configured == false)
@@ -852,8 +906,10 @@ static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
 static void becomeStation(connection_info_t *pConnectionInfo) {
     ESP_LOGD(tag, "- Connecting to access point \"%s\" ...", pConnectionInfo->ssid);
     assert(strlen(pConnectionInfo->ssid) > 0);
-
+    
+    /* If this is a retry don't re-initialise sta mode */
     if(sta_configured == false){
+        ESP_ERROR_CHECK(esp_wifi_stop());
         // If we have a static IP address information, use that.
         if (pConnectionInfo->ipInfo.ip.addr != 0) {
             ESP_LOGD(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
@@ -865,6 +921,7 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
 
         ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
         wifi_config_t sta_config;
+        memset(&sta_config, 0, sizeof(wifi_config_t));
         sta_config.sta.bssid_set = 0;
         memcpy(sta_config.sta.ssid, pConnectionInfo->ssid, SSID_SIZE);
         memcpy(sta_config.sta.password, pConnectionInfo->password, PASSWORD_SIZE);
@@ -884,6 +941,7 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
 static void becomeAccessPoint() {
     ESP_LOGD(tag, "- Starting being an access point ...");
     // We don't have connection info so be an access point!
+    ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     sta_configured = false;
     wifi_config_t apConfig = {
