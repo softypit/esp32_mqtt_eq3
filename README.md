@@ -1,8 +1,8 @@
 # EQ-3 Radiator valve control application for ESP-32
 
-![tested on ESP-WROOM-32](https://img.shields.io/badge/tested--on-ESP--WROOM--32-brightgreen.svg)
+![tested on ESP-WROOM-32](https://img.shields.io/badge/tested--on-ESP--WROM--32-brightgreen.svg)
 
-EQ-3 radiator valves work really well for a home-automation heating system. They are fully configurable vie BLE as well as their front-panel. There are more options available than the calorBT app offers.
+EQ-3 radiator valves work really well for a home-automation heating system. They are fully configurable vie BLE as well as their front-panel. There are more options available than the calorBT app makes available.
 
 The main problem with centrally controlling them is the limited range of BLE. This makes it impossible to use a single central-controller to talk to all TRVs in a typical house. Therefore multiple 'hubs' are required at distributed locations.
 
@@ -78,9 +78,7 @@ where the device is indicated by its bluetooth address (MAC)
 | auto | enables the internal temperature/time program | -none - | *`/<mqttid>radin/trv <eq-3-address> auto`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl auto` | v1.20 |
 | manual | disables the internal temperature/time program | -none - | *`/<mqttid>radin/trv <eq-3-address> manual`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl manual` | v1.20 |
 | offset | sets the room-temperature offset | the temperature to set, this can be -3.5 - +3.5 in 0.5 degree increments | *`/<mqttid>radin/trv <eq-3-address> offset 3.5`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl offset 3.5` | v1.20 |
-| settemp | sets the required temperature for the valve to open/close at | the temperature to set, this can be 5.0 to 29.5 in 0.5 degree increments| *`/<mqttid>radin/trv <eq-3-address> settemp 20.0`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl settemp 20.0` | v1.20 |
-| on | Open the valve fully ('on' is displayed on the lcd) | -none - | *`/<mqttid>radin/trv <eq-3-address> on`*<br><br>`livingroomradin/trv ab:cd:ef:gh:ij:kl on` | 1.51-beta |
-| off | Close the valve fully ('off' is displayed on the lcd) | -none - | *`/<mqttid>radin/trv <eq-3-address> off`*<br><br>`livingroomradin/trv ab:cd:ef:gh:ij:kl off` | 1.51-beta |
+| settemp | sets the required temperature for the valve to open/close at | the temperature to set, this can be 5.0 to 29.5 in 0.5 degree increments| *`/<mqttid>radin/trv <eq-3-address> offset 20.0`*<br><br>`/livingroomradin/trv ab:cd:ef:gh:ij:kl settemp 20.0` | v1.20 |
 
 In response to every successful command a status message is published to `/<mqttid>radout/status` containing json-encoded details of address, temperature set point, valve open percentage, mode, boost state, lock state and battery state. 
 

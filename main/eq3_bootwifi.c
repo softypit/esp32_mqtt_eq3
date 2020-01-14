@@ -485,9 +485,9 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 mg_get_http_var(&message->body, "ssid",	connectionInfo.ssid, SSID_SIZE);
                 mg_get_http_var(&message->body, "password", connectionInfo.password, PASSWORD_SIZE);
 
-                mg_get_http_var(&message->body, "mqtturl", connectionInfo.mqtturl, MAX_URL_SIZE);
-                mg_get_http_var(&message->body, "mqttuser", connectionInfo.mqttuser, USERNAME_SIZE);
-                mg_get_http_var(&message->body, "mqttpass", connectionInfo.mqttpass, PASSWORD_SIZE);
+                mg_get_http_var(&message->body, "mqtturl", connectionInfo.mqtturl, SSID_SIZE);
+                mg_get_http_var(&message->body, "mqttuser", connectionInfo.mqttuser, SSID_SIZE);
+                mg_get_http_var(&message->body, "mqttpass", connectionInfo.mqttpass, SSID_SIZE);
                 mg_get_http_var(&message->body, "mqttid", connectionInfo.mqttid, ID_SIZE);
                 
                 connectionInfo.ntpenabled = 0;
