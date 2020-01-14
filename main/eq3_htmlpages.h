@@ -143,6 +143,9 @@ const char command_post_device[] = "</select></td><td><select name=\"command\"> 
 <option value=\"auto\">auto</option> \
 <option value=\"manual\">manual</option> \
 <option value=\"settemp\">settemp</option> \
+<option value=\"on\">open (on)</option> \
+<option value=\"off\">closed (off)</option> \
+<option value=\"offset\">tempoffset</option> \
 <option value=\"settime\">settime</option> \
 </select> \
 </td><td><input type=\"text\" name=\"value\"></td></tr> \

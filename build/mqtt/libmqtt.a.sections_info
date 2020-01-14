@@ -1,0 +1,385 @@
+In archive /home/paul/Development/esp32_v3/esp-idf/paulapps/esp32_mqtt_eq3/build/mqtt/libmqtt.a:
+
+mqtt_client.o:     file format elf32-xtensa-le
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .literal.create_string 00000024  00000000  00000000  00000034  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .literal.esp_mqtt_destroy_config 00000030  00000000  00000000  00000058  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  2 .literal.esp_mqtt_dispatch_event_with_msgid 00000008  00000000  00000000  00000088  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  3 .literal.esp_mqtt_abort_connection 00000010  00000000  00000000  00000090  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  4 .literal.mqtt_write_data 00000018  00000000  00000000  000000a0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  5 .literal.esp_mqtt_connect 0000008c  00000000  00000000  000000b8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  6 .literal.deliver_publish 00000030  00000000  00000000  00000144  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  7 .literal.is_valid_mqtt_msg 00000004  00000000  00000000  00000174  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  8 .literal.mqtt_process_receive 00000070  00000000  00000000  00000178  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  9 .literal.esp_mqtt_client_ping 00000018  00000000  00000000  000001e8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 10 .literal.esp_mqtt_task 000000c4  00000000  00000000  00000200  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 11 .literal.mqtt_enqueue 00000008  00000000  00000000  000002c4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 12 .literal.mqtt_enqueue_oversized 00000008  00000000  00000000  000002cc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 13 .literal.esp_mqtt_set_config 000000c0  00000000  00000000  000002d4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 14 .literal.esp_mqtt_client_set_uri 00000058  00000000  00000000  00000394  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 15 .literal.esp_mqtt_client_start 0000002c  00000000  00000000  000003ec  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 16 .literal.esp_mqtt_client_stop 00000014  00000000  00000000  00000418  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 17 .literal.esp_mqtt_client_destroy 00000020  00000000  00000000  0000042c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 18 .literal.esp_mqtt_client_init 0000012c  00000000  00000000  0000044c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 19 .literal.esp_mqtt_client_subscribe 00000028  00000000  00000000  00000578  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 20 .literal.esp_mqtt_client_unsubscribe 00000028  00000000  00000000  000005a0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 21 .literal.esp_mqtt_client_publish 00000038  00000000  00000000  000005c8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 22 .text         00000000  00000000  00000000  00000600  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 23 .data         00000000  00000000  00000000  00000600  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+ 24 .bss          00000000  00000000  00000000  00000600  2**0
+                  ALLOC
+ 25 .text.esp_mqtt_dispatch_event 00000021  00000000  00000000  00000600  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 26 .rodata.str1.4 00000710  00000000  00000000  00000624  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 27 .text.create_string 00000056  00000000  00000000  00000d34  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 28 .text.esp_mqtt_destroy_config 00000078  00000000  00000000  00000d8c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 29 .text.esp_mqtt_dispatch_event_with_msgid 0000001d  00000000  00000000  00000e04  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 30 .text.esp_mqtt_abort_connection 00000039  00000000  00000000  00000e24  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 31 .text.mqtt_write_data 00000048  00000000  00000000  00000e60  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 32 .text.esp_mqtt_connect 000001a0  00000000  00000000  00000ea8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 33 .rodata.esp_mqtt_connect 00000018  00000000  00000000  00001048  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, DATA
+ 34 .text.deliver_publish 0000011e  00000000  00000000  00001060  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 35 .text.is_valid_mqtt_msg 00000048  00000000  00000000  00001180  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 36 .text.mqtt_process_receive 000001cc  00000000  00000000  000011c8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 37 .rodata.mqtt_process_receive 0000002c  00000000  00000000  00001394  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, DATA
+ 38 .text.esp_mqtt_client_ping 00000036  00000000  00000000  000013c0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 39 .text.esp_mqtt_task 000002e7  00000000  00000000  000013f8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 40 .text.mqtt_enqueue 00000042  00000000  00000000  000016e0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 41 .text.mqtt_enqueue_oversized 0000004b  00000000  00000000  00001724  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 42 .text.esp_mqtt_set_config 00000399  00000000  00000000  00001770  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 43 .text.esp_mqtt_client_set_uri 00000118  00000000  00000000  00001b0c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 44 .text.esp_mqtt_client_start 00000064  00000000  00000000  00001c24  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 45 .text.esp_mqtt_client_stop 00000044  00000000  00000000  00001c88  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 46 .text.esp_mqtt_client_destroy 00000054  00000000  00000000  00001ccc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 47 .text.esp_mqtt_client_init 000004c5  00000000  00000000  00001d20  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 48 .text.esp_mqtt_client_subscribe 00000081  00000000  00000000  000021e8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 49 .text.esp_mqtt_client_unsubscribe 0000007e  00000000  00000000  0000226c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 50 .text.esp_mqtt_client_publish 0000011b  00000000  00000000  000022ec  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 51 .rodata.__FUNCTION__$7206 0000000e  00000000  00000000  00002408  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 52 .rodata.__FUNCTION__$7191 00000015  00000000  00000000  00002418  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 53 .rodata.__FUNCTION__$7165 00000014  00000000  00000000  00002430  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 54 .debug_frame  00000238  00000000  00000000  00002444  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 55 .debug_info   0000338c  00000000  00000000  0000267c  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 56 .debug_abbrev 000003c6  00000000  00000000  00005a08  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 57 .debug_loc    00000fc8  00000000  00000000  00005dce  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 58 .debug_aranges 000000d0  00000000  00000000  00006d96  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 59 .debug_ranges 000000d8  00000000  00000000  00006e66  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 60 .debug_line   0000156b  00000000  00000000  00006f3e  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 61 .debug_str    00001530  00000000  00000000  000084a9  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 62 .comment      0000003b  00000000  00000000  000099d9  2**0
+                  CONTENTS, READONLY
+ 63 .xtensa.info  00000038  00000000  00000000  00009a14  2**0
+                  CONTENTS, READONLY
+ 64 .xt.lit       000000b0  00000000  00000000  00009a4c  2**0
+                  CONTENTS, RELOC, READONLY
+ 65 .xt.prop      00000ef4  00000000  00000000  00009afc  2**0
+                  CONTENTS, RELOC, READONLY
+
+mqtt_outbox.o:     file format elf32-xtensa-le
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .literal.outbox_init 00000020  00000000  00000000  00000034  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .literal.outbox_enqueue 00000038  00000000  00000000  00000054  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  2 .literal.outbox_delete 00000008  00000000  00000000  0000008c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  3 .literal.outbox_delete_msgid 00000008  00000000  00000000  00000094  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  4 .literal.outbox_set_pending 00000004  00000000  00000000  0000009c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  5 .literal.outbox_delete_msgtype 00000008  00000000  00000000  000000a0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  6 .literal.outbox_delete_expired 00000008  00000000  00000000  000000a8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  7 .literal.outbox_cleanup 00000010  00000000  00000000  000000b0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  8 .literal.outbox_destroy 00000008  00000000  00000000  000000c0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  9 .text         00000000  00000000  00000000  000000c8  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 10 .data         00000000  00000000  00000000  000000c8  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+ 11 .bss          00000000  00000000  00000000  000000c8  2**0
+                  ALLOC
+ 12 .rodata.str1.4 00000095  00000000  00000000  000000c8  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 13 .text.outbox_init 00000046  00000000  00000000  00000160  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 14 .text.outbox_enqueue 000000c1  00000000  00000000  000001a8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 15 .text.outbox_get 00000014  00000000  00000000  0000026c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 16 .text.outbox_dequeue 00000014  00000000  00000000  00000280  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 17 .text.outbox_delete 00000058  00000000  00000000  00000294  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 18 .text.outbox_delete_msgid 0000004c  00000000  00000000  000002ec  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 19 .text.outbox_set_pending 0000001c  00000000  00000000  00000338  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 20 .text.outbox_delete_msgtype 0000004c  00000000  00000000  00000354  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 21 .text.outbox_delete_expired 00000050  00000000  00000000  000003a0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 22 .text.outbox_get_size 00000015  00000000  00000000  000003f0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 23 .text.outbox_cleanup 00000057  00000000  00000000  00000408  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 24 .text.outbox_destroy 00000017  00000000  00000000  00000460  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 25 .rodata.__FUNCTION__$6620 0000000f  00000000  00000000  00000478  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 26 .rodata.__FUNCTION__$6613 0000000c  00000000  00000000  00000488  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 27 .debug_frame  00000130  00000000  00000000  00000494  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 28 .debug_info   000008fc  00000000  00000000  000005c4  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 29 .debug_abbrev 000001c3  00000000  00000000  00000ec0  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 30 .debug_loc    000003dc  00000000  00000000  00001083  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 31 .debug_aranges 00000078  00000000  00000000  0000145f  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 32 .debug_ranges 000000c8  00000000  00000000  000014d7  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 33 .debug_line   000006c4  00000000  00000000  0000159f  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 34 .debug_str    00000446  00000000  00000000  00001c63  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 35 .comment      0000003b  00000000  00000000  000020a9  2**0
+                  CONTENTS, READONLY
+ 36 .xtensa.info  00000038  00000000  00000000  000020e4  2**0
+                  CONTENTS, READONLY
+ 37 .xt.lit       00000048  00000000  00000000  0000211c  2**0
+                  CONTENTS, RELOC, READONLY
+ 38 .xt.prop      000004d4  00000000  00000000  00002164  2**0
+                  CONTENTS, RELOC, READONLY
+
+mqtt_msg.o:     file format elf32-xtensa-le
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .literal.fini_message 00000004  00000000  00000000  00000034  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .literal.append_string 00000004  00000000  00000000  00000038  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  2 .literal.append_message_id 00000008  00000000  00000000  0000003c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  3 .literal.mqtt_msg_init 00000004  00000000  00000000  00000044  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  4 .literal.mqtt_msg_connect 0000004c  00000000  00000000  00000048  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  5 .literal.mqtt_msg_publish 00000028  00000000  00000000  00000094  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  6 .literal.mqtt_msg_puback 00000010  00000000  00000000  000000bc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  7 .literal.mqtt_msg_pubrec 00000010  00000000  00000000  000000cc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  8 .literal.mqtt_msg_pubrel 00000010  00000000  00000000  000000dc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  9 .literal.mqtt_msg_pubcomp 00000010  00000000  00000000  000000ec  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 10 .literal.mqtt_msg_subscribe 00000024  00000000  00000000  000000fc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 11 .literal.mqtt_msg_unsubscribe 00000020  00000000  00000000  00000120  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 12 .literal.mqtt_msg_pingreq 00000008  00000000  00000000  00000140  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 13 .literal.mqtt_msg_pingresp 00000008  00000000  00000000  00000148  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 14 .literal.mqtt_msg_disconnect 00000008  00000000  00000000  00000150  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 15 .text         00000000  00000000  00000000  00000158  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 16 .data         00000000  00000000  00000000  00000158  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+ 17 .bss          00000000  00000000  00000000  00000158  2**0
+                  ALLOC
+ 18 .text.init_message 0000000b  00000000  00000000  00000158  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 19 .text.fail_message 0000000d  00000000  00000000  00000164  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 20 .text.fini_message 000000b1  00000000  00000000  00000174  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 21 .text.append_string 00000048  00000000  00000000  00000228  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 22 .text.append_message_id 00000044  00000000  00000000  00000270  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 23 .text.mqtt_msg_init 00000019  00000000  00000000  000002b4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 24 .text.mqtt_get_total_length 00000036  00000000  00000000  000002d0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 25 .text.mqtt_get_publish_topic 00000049  00000000  00000000  00000308  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 26 .text.mqtt_get_publish_data 00000089  00000000  00000000  00000354  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 27 .text.mqtt_get_id 000000b2  00000000  00000000  000003e0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 28 .rodata.str1.4 00000005  00000000  00000000  00000494  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 29 .text.mqtt_msg_connect 000001a0  00000000  00000000  0000049c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 30 .text.mqtt_msg_publish 000000c2  00000000  00000000  0000063c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 31 .text.mqtt_msg_puback 0000003a  00000000  00000000  00000700  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 32 .text.mqtt_msg_pubrec 0000003a  00000000  00000000  0000073c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 33 .text.mqtt_msg_pubrel 0000003a  00000000  00000000  00000778  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 34 .text.mqtt_msg_pubcomp 0000003a  00000000  00000000  000007b4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 35 .text.mqtt_msg_subscribe 00000094  00000000  00000000  000007f0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 36 .text.mqtt_msg_unsubscribe 00000074  00000000  00000000  00000884  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 37 .text.mqtt_msg_pingreq 00000020  00000000  00000000  000008f8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 38 .text.mqtt_msg_pingresp 00000020  00000000  00000000  00000918  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 39 .text.mqtt_msg_disconnect 00000020  00000000  00000000  00000938  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 40 .debug_frame  00000208  00000000  00000000  00000958  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 41 .debug_info   00001081  00000000  00000000  00000b60  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 42 .debug_abbrev 0000025d  00000000  00000000  00001be1  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 43 .debug_loc    00000f31  00000000  00000000  00001e3e  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 44 .debug_aranges 000000c0  00000000  00000000  00002d6f  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 45 .debug_ranges 000000d0  00000000  00000000  00002e2f  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 46 .debug_line   00000923  00000000  00000000  00002eff  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 47 .debug_str    000007ab  00000000  00000000  00003822  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 48 .comment      0000003b  00000000  00000000  00003fcd  2**0
+                  CONTENTS, READONLY
+ 49 .xtensa.info  00000038  00000000  00000000  00004008  2**0
+                  CONTENTS, READONLY
+ 50 .xt.lit       00000078  00000000  00000000  00004040  2**0
+                  CONTENTS, RELOC, READONLY
+ 51 .xt.prop      00000954  00000000  00000000  000040b8  2**0
+                  CONTENTS, RELOC, READONLY
+
+platform_esp32_idf.o:     file format elf32-xtensa-le
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .literal.platform_create_id_string 0000002c  00000000  00000000  00000034  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .literal.platform_random 00000004  00000000  00000000  00000060  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  2 .literal.platform_tick_get_ms 00000008  00000000  00000000  00000064  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  3 .literal.ms_to_timeval 00000004  00000000  00000000  0000006c  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  4 .text         00000000  00000000  00000000  00000070  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  5 .data         00000000  00000000  00000000  00000070  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  6 .bss          00000000  00000000  00000000  00000070  2**0
+                  ALLOC
+  7 .rodata.str1.4 000000b7  00000000  00000000  00000070  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  8 .text.platform_create_id_string 00000062  00000000  00000000  00000128  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  9 .text.platform_random 0000000e  00000000  00000000  0000018c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 10 .text.platform_tick_get_ms 00000043  00000000  00000000  0000019c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 11 .text.ms_to_timeval 0000002e  00000000  00000000  000001e0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 12 .rodata.__FUNCTION__$6394 0000001a  00000000  00000000  00000210  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 13 .debug_frame  00000070  00000000  00000000  0000022c  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 14 .debug_info   00000367  00000000  00000000  0000029c  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 15 .debug_abbrev 000001a4  00000000  00000000  00000603  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 16 .debug_loc    00000060  00000000  00000000  000007a7  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 17 .debug_aranges 00000038  00000000  00000000  00000807  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 18 .debug_ranges 00000028  00000000  00000000  0000083f  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 19 .debug_line   000002c9  00000000  00000000  00000867  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 20 .debug_str    00000347  00000000  00000000  00000b30  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 21 .comment      0000003b  00000000  00000000  00000e77  2**0
+                  CONTENTS, READONLY
+ 22 .xtensa.info  00000038  00000000  00000000  00000eb2  2**0
+                  CONTENTS, READONLY
+ 23 .xt.lit       00000020  00000000  00000000  00000eea  2**0
+                  CONTENTS, RELOC, READONLY
+ 24 .xt.prop      000000f0  00000000  00000000  00000f0a  2**0
+                  CONTENTS, RELOC, READONLY

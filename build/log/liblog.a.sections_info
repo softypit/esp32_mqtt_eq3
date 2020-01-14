@@ -1,0 +1,90 @@
+In archive /home/paul/Development/esp32_v3/esp-idf/paulapps/esp32_mqtt_eq3/build/log/liblog.a:
+
+log.o:     file format elf32-xtensa-le
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .literal.heap_bubble_down 00000004  00000000  00000000  00000034  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .literal.esp_log_set_vprintf 00000014  00000000  00000000  00000038  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  2 .literal.esp_log_level_set 00000048  00000000  00000000  0000004c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  3 .iram1.11.literal 00000034  00000000  00000000  00000094  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  4 .iram1.12.literal 00000008  00000000  00000000  000000c8  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  5 .iram1.13.literal 00000014  00000000  00000000  000000d0  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  6 .literal.esp_log_buffer_hex_internal 00000050  00000000  00000000  000000e4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  7 .literal.esp_log_buffer_char_internal 00000050  00000000  00000000  00000134  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  8 .literal.esp_log_buffer_hexdump_internal 00000078  00000000  00000000  00000184  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  9 .text         00000000  00000000  00000000  000001fc  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+ 10 .data         00000000  00000000  00000000  000001fc  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+ 11 .bss          00000000  00000000  00000000  000001fc  2**0
+                  ALLOC
+ 12 .text.heap_bubble_down 0000004e  00000000  00000000  000001fc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 13 .text.esp_log_set_vprintf 00000043  00000000  00000000  0000024c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 14 .rodata.str1.4 000000aa  00000000  00000000  00000290  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+ 15 .text.esp_log_level_set 0000011e  00000000  00000000  0000033c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 16 .iram1.11     00000136  00000000  00000000  0000045c  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 17 .iram1.12     0000001f  00000000  00000000  00000594  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 18 .iram1.13     00000047  00000000  00000000  000005b4  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 19 .text.esp_log_buffer_hex_internal 0000011a  00000000  00000000  000005fc  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 20 .text.esp_log_buffer_char_internal 0000010b  00000000  00000000  00000718  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 21 .text.esp_log_buffer_hexdump_internal 000001da  00000000  00000000  00000824  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+ 22 .bss.base$5521 00000004  00000000  00000000  00000a00  2**2
+                  ALLOC
+ 23 .bss.s_log_mutex 00000004  00000000  00000000  00000a00  2**2
+                  ALLOC
+ 24 .data.s_log_print_func 00000004  00000000  00000000  00000a00  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, DATA
+ 25 .bss.s_log_cache_entry_count 00000004  00000000  00000000  00000a04  2**2
+                  ALLOC
+ 26 .bss.s_log_cache_max_generation 00000004  00000000  00000000  00000a04  2**2
+                  ALLOC
+ 27 .bss.s_log_cache 000000f8  00000000  00000000  00000a04  2**2
+                  ALLOC
+ 28 .bss.s_log_tags 00000004  00000000  00000000  00000a04  2**2
+                  ALLOC
+ 29 .data.s_log_default_level 00000004  00000000  00000000  00000a04  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+ 30 .debug_frame  000000e8  00000000  00000000  00000a08  2**2
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 31 .debug_info   00001164  00000000  00000000  00000af0  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 32 .debug_abbrev 000003e5  00000000  00000000  00001c54  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 33 .debug_loc    0000089c  00000000  00000000  00002039  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 34 .debug_aranges 00000060  00000000  00000000  000028d5  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 35 .debug_ranges 00000050  00000000  00000000  00002935  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 36 .debug_line   000008e3  00000000  00000000  00002985  2**0
+                  CONTENTS, RELOC, READONLY, DEBUGGING
+ 37 .debug_str    000006ad  00000000  00000000  00003268  2**0
+                  CONTENTS, READONLY, DEBUGGING
+ 38 .comment      0000003b  00000000  00000000  00003915  2**0
+                  CONTENTS, READONLY
+ 39 .xtensa.info  00000038  00000000  00000000  00003950  2**0
+                  CONTENTS, READONLY
+ 40 .xt.lit       00000048  00000000  00000000  00003988  2**0
+                  CONTENTS, RELOC, READONLY
+ 41 .xt.prop      00000654  00000000  00000000  000039d0  2**0
+                  CONTENTS, RELOC, READONLY
