@@ -122,15 +122,9 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 static int command_complete(bool success);
 
 /* EQ-3 service identifier */
-static esp_gatt_srvc_id_t eq3_service_id = {
-    .id = {
-        .uuid = {
-            .len = ESP_UUID_LEN_128,
-            .uuid = {.uuid128 = {0x46, 0x70, 0xb7, 0x5b, 0xff, 0xa6, 0x4a, 0x13, 0x90, 0x90, 0x4f, 0x65, 0x42, 0x51, 0x13, 0x3e},},
-        },
-        .inst_id = 0,
-    },
-    .is_primary = true,
+static esp_bt_uuid_t eq3_service_id = {
+    .len = ESP_UUID_LEN_128,
+    .uuid = {.uuid128 = {0x46, 0x70, 0xb7, 0x5b, 0xff, 0xa6, 0x4a, 0x13, 0x90, 0x90, 0x4f, 0x65, 0x42, 0x51, 0x13, 0x3e},}
 };
 
 /* EQ-3 characteristic identifier for setting parameters */
@@ -313,7 +307,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
           int checkcount;
           for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-            if(srvc_id->id.uuid.uuid.uuid128[checkcount] != eq3_service_id.id.uuid.uuid.uuid128[checkcount]){
+            if(srvc_id->id.uuid.uuid.uuid128[checkcount] != eq3_service_id.uuid.uuid128[checkcount]){
               checkcount = -1;
               break;
             }
