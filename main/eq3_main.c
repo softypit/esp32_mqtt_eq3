@@ -340,12 +340,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                         if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
                             int checkcount;
                                 
-                                /* Check if the service identifier is the one we're interested in */
-                                char printstr[ESP_UUID_LEN_128 * 2 + 1];
-                                int bytecount, writecount = 0;
-                                for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
-                                    sprintf(&printstr[writecount], "%02x", char_elem_result[charwalk].uuid.uuid.uuid128[bytecount] & 0xff);
-                                ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, printstr);
+                            /* Check if the service identifier is the one we're interested in */
+                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
                                 
                             /* Is this the response characteristic */
                             for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
@@ -384,11 +380,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                         if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
                             int checkcount;
                             /* Check if the service identifier is the one we're interested in */
-                            char printstr[ESP_UUID_LEN_128 * 2 + 1];
-                            int bytecount, writecount = 0;
-                            for(bytecount=ESP_UUID_LEN_128 - 1; bytecount >= 0; bytecount--, writecount += 2)
-                                sprintf(&printstr[writecount], "%02x", char_elem_result[charwalk].uuid.uuid.uuid128[bytecount] & 0xff);
-                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, printstr);
+                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
                             
                             /* Is this the command characteristic */
                             for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
