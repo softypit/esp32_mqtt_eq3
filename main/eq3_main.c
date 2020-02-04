@@ -203,6 +203,48 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
     runtimer();
 }
 
+
+static esp_gattc_char_elem_t *searchRequestCharacteristics(const esp_gatt_if_t *gattc_if, const esp_ble_gattc_cb_param_t *p_data, const esp_bt_uuid_t *filter_id, const esp_bt_uuid_t *id, const uint16_t count, const char *description)
+{
+    uint16_t count2 = 1;
+
+    /* Get the response characteristic handle */
+    esp_gatt_status_t status = esp_ble_gattc_get_char_by_uuid(*gattc_if, p_data->search_cmpl.conn_id, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
+                                                              gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, *filter_id, char_elem_result, &count2);
+
+    if (status != ESP_GATT_OK)
+    {
+        ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_char_by_uuid error searching %s with filter_uuid %s", description, UuidToString(*filter_id));
+    }
+    /*  We should only get a single result from our filter */
+    if (count2 > 0)
+    {
+        ESP_LOGI(GATTC_TAG, "Found %d filtered attributes for %s", count2, description);
+        for (uint16_t charwalk = 0; charwalk < count; charwalk++)
+        {
+            if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128)
+            {
+                /* Check if the service identifier is the one we're interested in */
+                ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
+
+                /* Is this the response characteristic */
+                if (compare_uuid(char_elem_result[charwalk].uuid, *id))
+                {
+                    return &char_elem_result[charwalk];
+                }
+            }
+        }
+
+        ESP_LOGE(GATTC_TAG, "None of the attributes for %s has uuid %s!", description, UuidToString(*id));
+    }
+    else
+    {
+        ESP_LOGE(GATTC_TAG, "No %s attribute found with filter_uuid %s", description, UuidToString(*filter_id));
+    }
+
+    return NULL;
+}
+
 /* Callback function to handle GATT-Client events */ 
 /* While we've discovered the EQ-3 devices with the GAP handler we need to check the service we want is available when we connect
  * so we connect to the device and search its services before we try to set our chosen characteristic */
@@ -314,66 +356,22 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                 ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error");
             }      
             if (count > 0){
-                uint16_t count2 = 1;
                 ESP_LOGI(GATTC_TAG, "%d attributes reported", count);
                     
-                /* Get the response characteristic handle */
-                status = esp_ble_gattc_get_char_by_uuid( gattc_if, p_data->search_cmpl.conn_id, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
-                                                         gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, eq3_resp_char_id, char_elem_result, &count2);
-                if (status != ESP_GATT_OK){
-                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_char_by_uuid error");
-                }
-                /*  We should only get a single result from our filter */
-                if (count2 > 0){
-                    uint16_t charwalk;
-                    ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
-                    for(charwalk = 0; charwalk < count; charwalk++){
-                        if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
-                            /* Check if the service identifier is the one we're interested in */
-                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
-                                                        
-                            /* Is this the response characteristic */
-                            if(compare_uuid(char_elem_result[charwalk].uuid, eq3_resp_char_id) && char_elem_result[charwalk].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY) {
-                                ESP_LOGI(GATTC_TAG, "eq-3 got resp id handle");
-                                gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle = char_elem_result[charwalk].char_handle;
-                                continue;
-                            }
-                        }
-                    }
-                    /* If we got the response characteristic register for notifications */
-                    if(gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle != 0){
-                        esp_ble_gattc_register_for_notify (gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle);
-                    }
-                }else{
-                    ESP_LOGE(GATTC_TAG, "No notification attribute found!");
+                esp_gattc_char_elem_t *char_elem;
+
+                if ((char_elem = searchRequestCharacteristics(&gattc_if, p_data, &eq3_resp_char_id, &eq3_resp_char_id, count, "notification")) != NULL && char_elem->properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY)
+                {
+                    ESP_LOGI(GATTC_TAG, "eq-3 got resp id handle");
+                    gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle = char_elem->char_handle;
+                    esp_ble_gattc_register_for_notify(gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle);
                 }
 
-                count2 = 1;
                 /* Get the command characteristic handle */
-                status = esp_ble_gattc_get_char_by_uuid( gattc_if, p_data->search_cmpl.conn_id, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
-                                                         gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, eq3_char_id, char_elem_result, &count2);
-                if (status != ESP_GATT_OK){
-                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_char_by_uuid error");
-                }
-                /*  We should only get a single result from our filter */
-                if (count2 > 0){
-                    uint16_t charwalk;
-                    ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
-                    for(charwalk = 0; charwalk < count; charwalk++){                            
-                        if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
-                            /* Check if the service identifier is the one we're interested in */
-                            ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
-                            
-                            /* Is this the command characteristic */
-                            if(compare_uuid(char_elem_result[charwalk].uuid, eq3_char_id)) {
-                                ESP_LOGI(GATTC_TAG, "eq-3 got cmd id handle");
-                                gl_profile_tab[PROFILE_A_APP_ID].char_handle = char_elem_result[charwalk].char_handle;
-                                continue;
-                            }
-                        }
-                    }
-                }else{
-                    ESP_LOGE(GATTC_TAG, "No command attribute found!");
+                if ((char_elem = searchRequestCharacteristics(&gattc_if, p_data, &eq3_char_id, &eq3_char_id, count, "command")) != NULL)
+                {
+                    ESP_LOGI(GATTC_TAG, "eq-3 got cmd id handle");
+                    gl_profile_tab[PROFILE_A_APP_ID].char_handle = char_elem->char_handle;
                 }
                     
             }else{
