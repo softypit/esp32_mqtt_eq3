@@ -52,6 +52,8 @@
 
 #include "eq3_bootwifi.h"
 
+#include "eq3_utils.h"
+
 #define GATTC_TAG "EQ3_MAIN"
 #define INVALID_HANDLE   0
 
