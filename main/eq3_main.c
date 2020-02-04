@@ -203,6 +203,19 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
     runtimer();
 }
 
+static bool searchService(const esp_ble_gattc_cb_param_t *p_data, const esp_bt_uuid_t *service_id, const char *description)
+{
+    esp_gatt_srvc_id_t *srvc_id = (esp_gatt_srvc_id_t *)&p_data->search_res.srvc_id;
+    if (compare_uuid(srvc_id->id.uuid, *service_id))
+    {
+        get_server = true;
+        ESP_LOGI(GATTC_TAG, "Found %s", description);
+        gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
+        gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
+        return true;
+    }
+    return false;
+}
 
 static esp_gattc_char_elem_t *searchRequestCharacteristics(const esp_gatt_if_t *gattc_if, const esp_ble_gattc_cb_param_t *p_data, const esp_bt_uuid_t *filter_id, const esp_bt_uuid_t *id, const uint16_t count, const char *description)
 {
@@ -328,16 +341,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
         break;
     case ESP_GATTC_SEARCH_RES_EVT: {
-        /* Search result is in */
-        esp_gatt_srvc_id_t *srvc_id =(esp_gatt_srvc_id_t *)&p_data->search_res.srvc_id;
-        conn_id = p_data->search_res.conn_id;
-
-        if(compare_uuid(srvc_id->id.uuid, eq3_service_id)) {
-            get_server = true;
-            ESP_LOGI(GATTC_TAG, "Found EQ-3");
-            gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
-            gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
-        }
+        searchService(p_data, &eq3_service_id, (char *)"EQ-3");
         break;
     }
     case ESP_GATTC_SEARCH_CMPL_EVT:
