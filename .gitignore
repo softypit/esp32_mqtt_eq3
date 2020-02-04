@@ -1,0 +1,7 @@
+/build/
+/.settings/
+*.old
+/.cproject
+/.project
+/.vscode
+/.metadata
