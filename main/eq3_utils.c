@@ -15,3 +15,20 @@ char *UuidToString(const esp_bt_uuid_t id)
     }
     return uuidToStringBuffer;
 }
+
+bool compare_uuid(const esp_bt_uuid_t id, const esp_bt_uuid_t expectedServiceId)
+{
+    if (id.len == ESP_UUID_LEN_128)
+    {
+        int checkcount;
+        for (checkcount = 0; checkcount < ESP_UUID_LEN_128; checkcount++)
+        {
+            if (id.uuid.uuid128[checkcount] != expectedServiceId.uuid.uuid128[checkcount])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}

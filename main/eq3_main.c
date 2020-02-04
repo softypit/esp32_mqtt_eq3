@@ -290,20 +290,11 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         esp_gatt_srvc_id_t *srvc_id =(esp_gatt_srvc_id_t *)&p_data->search_res.srvc_id;
         conn_id = p_data->search_res.conn_id;
 
-        if (srvc_id->id.uuid.len == ESP_UUID_LEN_128){
-          int checkcount;
-          for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-            if(srvc_id->id.uuid.uuid.uuid128[checkcount] != eq3_service_id.uuid.uuid128[checkcount]){
-              checkcount = -1;
-              break;
-            }
-          }
-          if(checkcount == ESP_UUID_LEN_128) {
+        if(compare_uuid(srvc_id->id.uuid, eq3_service_id)) {
             get_server = true;
             ESP_LOGI(GATTC_TAG, "Found EQ-3");
             gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
             gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
-          }
         }
         break;
     }
@@ -338,19 +329,11 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
                     for(charwalk = 0; charwalk < count; charwalk++){
                         if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
-                            int checkcount;
-                                
                             /* Check if the service identifier is the one we're interested in */
                             ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
-                                
+                                                        
                             /* Is this the response characteristic */
-                            for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_resp_char_id.uuid.uuid128[checkcount]){
-                                    checkcount = -1;
-                                    break;
-                                }
-                            }
-                            if(checkcount == ESP_UUID_LEN_128 && char_elem_result[charwalk].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY) {
+                            if(compare_uuid(char_elem_result[charwalk].uuid, eq3_resp_char_id) && char_elem_result[charwalk].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY) {
                                 ESP_LOGI(GATTC_TAG, "eq-3 got resp id handle");
                                 gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle = char_elem_result[charwalk].char_handle;
                                 continue;
@@ -378,18 +361,11 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     ESP_LOGI(GATTC_TAG, "Found %d filtered attributes", count2);
                     for(charwalk = 0; charwalk < count; charwalk++){                            
                         if (char_elem_result[charwalk].uuid.len == ESP_UUID_LEN_128){
-                            int checkcount;
                             /* Check if the service identifier is the one we're interested in */
                             ESP_LOGI(GATTC_TAG, "Found uuid %d UUID128: %s", charwalk, UuidToString(char_elem_result[charwalk].uuid));
                             
                             /* Is this the command characteristic */
-                            for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_char_id.uuid.uuid128[checkcount]){
-                                    checkcount = -1;
-                                    break;
-                                }
-                            }
-                            if(checkcount == ESP_UUID_LEN_128) {
+                            if(compare_uuid(char_elem_result[charwalk].uuid, eq3_char_id)) {
                                 ESP_LOGI(GATTC_TAG, "eq-3 got cmd id handle");
                                 gl_profile_tab[PROFILE_A_APP_ID].char_handle = char_elem_result[charwalk].char_handle;
                                 continue;
