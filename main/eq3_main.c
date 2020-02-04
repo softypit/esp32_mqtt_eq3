@@ -139,12 +139,9 @@ static esp_bt_uuid_t eq3_filter_char_uuid = {
 };
 
 /* EQ-3 characteristic used to notify settings from trv in response to parameter set */
-static esp_gatt_id_t eq3_resp_char_id = {
-    .uuid = {
-        .len = ESP_UUID_LEN_128,
-        .uuid = {.uuid128 = {0x2a, 0xeb, 0xe0, 0xf4, 0x90, 0x6c, 0x41, 0xaf, 0x96, 0x09, 0x29, 0xcd, 0x4d, 0x43, 0xe8, 0xd0},},
-    },
-    .inst_id = 0,
+static esp_bt_uuid_t eq3_resp_char_id = {
+    .len = ESP_UUID_LEN_128,
+    .uuid = {.uuid128 = {0x2a, 0xeb, 0xe0, 0xf4, 0x90, 0x6c, 0x41, 0xaf, 0x96, 0x09, 0x29, 0xcd, 0x4d, 0x43, 0xe8, 0xd0},}
 };
 
 static esp_bt_uuid_t eq3_resp_filter_char_uuid = {
@@ -360,7 +357,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                                 
                             /* Is this the response characteristic */
                             for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_resp_char_id.uuid.uuid.uuid128[checkcount]){
+                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_resp_char_id.uuid.uuid128[checkcount]){
                                     checkcount = -1;
                                     break;
                                 }
