@@ -128,12 +128,9 @@ static esp_bt_uuid_t eq3_service_id = {
 };
 
 /* EQ-3 characteristic identifier for setting parameters */
-static esp_gatt_id_t eq3_char_id = {
-    .uuid = {
-        .len = ESP_UUID_LEN_128,
-        .uuid = {.uuid128 = {0x09, 0xea, 0x79, 0x81, 0xdf, 0xb8, 0x4b, 0xdb, 0xad, 0x3b, 0x4a, 0xce, 0x5a, 0x58, 0xa4, 0x3f},},
-    },
-    .inst_id = 0,
+static esp_bt_uuid_t eq3_char_id = {
+    .len = ESP_UUID_LEN_128,
+    .uuid = {.uuid128 = {0x09, 0xea, 0x79, 0x81, 0xdf, 0xb8, 0x4b, 0xdb, 0xad, 0x3b, 0x4a, 0xce, 0x5a, 0x58, 0xa4, 0x3f},}
 };
 
 static esp_bt_uuid_t eq3_filter_char_uuid = {
@@ -406,7 +403,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                             
                             /* Is this the command characteristic */
                             for(checkcount=0; checkcount < ESP_UUID_LEN_128; checkcount++){
-                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_char_id.uuid.uuid.uuid128[checkcount]){
+                                if(char_elem_result[charwalk].uuid.uuid.uuid128[checkcount] != eq3_char_id.uuid.uuid128[checkcount]){
                                     checkcount = -1;
                                     break;
                                 }
