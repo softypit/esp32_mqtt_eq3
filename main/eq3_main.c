@@ -428,15 +428,19 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                 statidx += sprintf(&statrep[statidx], "\"temp\":\"%d.%d\"", tempval, temphalf);
             }
             if(p_data->notify.value_len >= 14){
-                int8_t offsetval, offsethalf = 0;
-                offsetval = p_data->notify.value[14];
-                offsetval -= 7; // The offset temperature is encoded in steps of 0.5°C between -3.5°C and 3.5°C
-
-                if(offsetval & 0x01)
-                    offsethalf = 5;
-                offsetval >>= 1;
-                ESP_LOGI(GATTC_TAG, "eq3 offsettemp is %d.%d C", offsetval, offsethalf);
-                statidx += sprintf(&statrep[statidx], ",\"offsetTemp\":\"%d.%d\"", offsetval, offsethalf);
+                tempval = p_data->notify.value[14];
+		
+		// The offset temperature is encoded in steps of 0.5°C between -3.5°C and 3.5°C
+                int offsetval = tempval-7; // new value area -7 to 7
+                offsetval *= ((offsetval>0) - (offsetval<0)); // if offsetval > 0 then *=(1-0) else *=(0-1) -> equivalent to offsetval = abs(offsetval)
+                offsetval >>= 1; // shift one bit left means -3 to 3
+		
+                int offsethalf = (1 - (tempval & 0x01)) * 5; // if bit 0 is not set, then we have a half value -> equivalent to if((tempval & 0x01) == 0) offsethalf = 5
+		
+                bool neg = (tempval <= 0x06);
+		
+                ESP_LOGI(GATTC_TAG, "eq3 offsettemp is %s%d.%d C", neg ? "-" : "", offsetval, offsethalf);
+                statidx += sprintf(&statrep[statidx], ",\"offsetTemp\":\"%s%d.%d\"", neg ? "-" : "", offsetval, offsethalf);
             }
             if(p_data->notify.value_len > 3){
                 tempval = p_data->notify.value[3];
