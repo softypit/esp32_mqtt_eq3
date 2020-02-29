@@ -733,7 +733,7 @@ int handle_request(char *cmdstr){
     // Skip any spaces
     while(*cmdptr == ' ')
         cmdptr++;    
-    if(strncmp((const char *)cmdptr, "settime", 7) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "settime", 7) == 0){
         start = true;
 
         if(cmdptr[8] != 0 && strlen(cmdptr + 8) < 12){
@@ -771,31 +771,31 @@ int handle_request(char *cmdstr){
         }
         command = EQ3_SETTIME;
     }
-    if(strncmp((const char *)cmdptr, "boost", 5) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "boost", 5) == 0){
         start = true;
         command = EQ3_BOOST;
     }
-    if(strncmp((const char *)cmdptr, "unboost", 7) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "unboost", 7) == 0){
         start = true;
         command = EQ3_UNBOOST;
     }
-    if(strncmp((const char *)cmdptr, "auto", 4) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "auto", 4) == 0){
         start = true;
         command = EQ3_AUTO;
     }
-    if(strncmp((const char *)cmdptr, "manual", 6) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "manual", 6) == 0){
         start = true;
         command = EQ3_MANUAL;
     }
-    if(strncmp((const char *)cmdptr, "lock", 4) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "lock", 4) == 0){
         start = true;
         command = EQ3_LOCK;
     }
-    if(strncmp((const char *)cmdptr, "unlock", 6) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "unlock", 6) == 0){
         start = true;
         command = EQ3_UNLOCK;
     }
-    if(strncmp((const char *)cmdptr, "offset", 6) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "offset", 6) == 0){
         char *endmsg;
         float offset = strtof(cmdptr + 7, &endmsg);
         if(offset < -3.5 || offset > 3.5){
@@ -810,7 +810,7 @@ int handle_request(char *cmdstr){
         command = EQ3_OFFSET;
         ESP_LOGI(GATTC_TAG, "set offset val 0x%x\n", cmdparms[0]);
     }
-    if(strncmp((const char *)cmdptr, "settemp", 7) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "settemp", 7) == 0){
         char *endmsg;
         float temp = strtof(cmdptr + 8, &endmsg);
         int inttemp = (int)temp;
@@ -826,13 +826,13 @@ int handle_request(char *cmdstr){
             return -1;
         }
     }
-    if(strncmp((const char *)cmdptr, "off", 3) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "off", 3) == 0){
         /* 'Off' is achieved by setting the required temperature to 4.5 */
         start = true;
         command = EQ3_SETTEMP;
         cmdparms[0] = 0x09; /* (4 << 1) | 0x01 */
     }
-    if(strncmp((const char *)cmdptr, "on", 2) == 0){
+    if(start == false && strncmp((const char *)cmdptr, "on", 2) == 0){
         /* 'On' is achieved by setting the required temperature to 30 */
         start = true;
         command = EQ3_SETTEMP;
@@ -1120,7 +1120,7 @@ void wifidone(int rc){
             time_t now = 0;
             struct tm timeinfo = { 0 };
             int retry = 0;
-            const int retry_count = 10;
+            const int retry_count = 30;
             while(timeinfo.tm_year < (2019 - 1900) && ++retry < retry_count) {
                 ESP_LOGI(GATTC_TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
                 vTaskDelay(2000 / portTICK_PERIOD_MS);

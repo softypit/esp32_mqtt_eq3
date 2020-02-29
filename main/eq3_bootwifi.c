@@ -904,7 +904,7 @@ static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
  * Become a station connecting to an existing access point.
  */
 static void becomeStation(connection_info_t *pConnectionInfo) {
-    ESP_LOGD(tag, "- Connecting to access point \"%s\" ...", pConnectionInfo->ssid);
+    ESP_LOGI(tag, "- Connecting to access point \"%s\" ...", pConnectionInfo->ssid);
     assert(strlen(pConnectionInfo->ssid) > 0);
     
     /* If this is a retry don't re-initialise sta mode */
@@ -912,13 +912,19 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
         ESP_ERROR_CHECK(esp_wifi_stop());
         // If we have a static IP address information, use that.
         if (pConnectionInfo->ipInfo.ip.addr != 0) {
-            ESP_LOGD(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
+            ESP_LOGI(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
             tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
             tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &pConnectionInfo->ipInfo);
         } else {
             tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA);
         }
-
+        if(strlen(pConnectionInfo->mqttid) == 0){
+            tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, "EQ3-heatcontroller");
+            ESP_LOGI(tag, "Hostname EQ3-heatcontroller");
+        }else{
+            tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, pConnectionInfo->mqttid);
+            ESP_LOGI(tag, "Hostname %s", pConnectionInfo->mqttid);
+        }
         ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
         wifi_config_t sta_config;
         memset(&sta_config, 0, sizeof(wifi_config_t));
@@ -939,7 +945,7 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
  * Become an access point.
  */
 static void becomeAccessPoint() {
-    ESP_LOGD(tag, "- Starting being an access point ...");
+    ESP_LOGI(tag, "- Starting being an access point ...");
     // We don't have connection info so be an access point!
     ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
