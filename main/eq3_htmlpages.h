@@ -81,10 +81,9 @@ const char connectedstatus[] = "<title>EQ3 status</title> \
 <div style='text-align:center;'><h1>EQ3 relay status</h1></div> \
 <table style=\"margin:1em auto;\"> \
 <tr><td>MQTT URL:</td><td>%s</td></tr> \
-<tr><td>MQTT user:</td><td>%s</td></tr> \
-<tr><td>MQTT pass:</td><td>%s</td></tr> \
 <tr><td>MQTT ID:</td><td>%s</td></tr> \
 <tr><td>MQTT status:</td><td>%s</td></tr> \
+<tr><td>Uptime:</td><td>%01d days %02d:%02d:%02d</td></tr> \
 </table>";
 
 const char apstatus[] = "<title>Please configure me</title> \

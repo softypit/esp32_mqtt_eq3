@@ -346,6 +346,7 @@ static int mongoose_serve_log(struct mg_connection *nc){
 
 /* Serve the status page */
 static int mongoose_serve_status(struct mg_connection *nc){
+    uint32_t seconds, minutes, hours, days;
     if(sta_configured == false){
         mongoose_serve_content(nc, (char *)apstatus, true);
         nc->flags |= MG_F_SEND_AND_CLOSE;
@@ -364,8 +365,16 @@ static int mongoose_serve_status(struct mg_connection *nc){
                 sprintf(status, "not connected");
                 break;
         }
+        seconds = (uint32_t)(esp_timer_get_time() / 1000000);
+        minutes = (seconds  / 60);
+        hours   = (minutes / 60);
+        days    = (hours   / 24);
+        seconds %= 60;
+        minutes %= 60;
+        hours %= 24;
+
         char *htmlstr = malloc(strlen(connectedstatus) + strlen(connectionInfo.mqtturl) + strlen(connectionInfo.mqttuser) + strlen(connectionInfo.mqttpass) + strlen(connectionInfo.mqttid) + 15);
-        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, status);
+        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttid, status, days, hours, minutes, seconds);
         mongoose_serve_content(nc, htmlstr, true);
         free(htmlstr);
         nc->flags |= MG_F_SEND_AND_CLOSE;

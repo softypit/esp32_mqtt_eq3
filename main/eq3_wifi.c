@@ -216,6 +216,10 @@ int connect_server(char *url, char *user, char *password, char *id){
         return -1;
     }
     
+    /* Only submit the password if the username is set */
+    if(user == NULL)
+        password = NULL;
+    
     snprintf(lwt_topic_buff, LWT_TOPIC_LEN, "/%sradout", id);
     snprintf(intopicbase, IN_TOPIC_LEN, "/%sradin", id);
     snprintf(outtopicbase, OUT_TOPIC_LEN,  "/%sradout", id);
