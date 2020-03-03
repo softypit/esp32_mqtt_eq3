@@ -7,7 +7,7 @@ ifndef IDF_PATH
 endif
 
 PROJECT_NAME := eq3_trv_control
-PROJECT_VER := 1.55-beta
+PROJECT_VER := 1.56-beta
 
 COMPONENT_ADD_INCLUDEDIRS := components/include
 
