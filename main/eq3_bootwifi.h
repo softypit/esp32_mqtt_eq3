@@ -14,7 +14,7 @@ void bootWiFi();
 void restart_station(void);
 
 bool ntp_enabled(void);
-char *getntpserver(void);
+char *getntpserver(int idx);
 char *getntptimezone(void);
 
 #endif /* MAIN_BOOTWIFI_H_ */

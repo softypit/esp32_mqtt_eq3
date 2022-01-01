@@ -27,21 +27,24 @@ const char pageemptyfooter[] = "</div> \
 </html>";
 
 const char selectap[] = "<div style='text-align:center;'><h1>Select WiFi</h1></div> \
-<form action=\"ssidSelected\" method=\"post\"> \
+<form action=\"configSubmit\" method=\"post\"> \
 <table style=\"margin:1em auto;\"> \
 <tbody> \
 <tr><td>SSID:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ssid\" value=\"%s\" /></td></tr> \
-<tr><td>Password:</td><td><input type=\"password\" autocorrect=\"off\" autocapitalize=\"none\" name=\"password\" value=\"%s\" /></td></tr> \
+<tr><td>Password:</td><td><input type=\"password\" autocorrect=\"off\" autocapitalize=\"none\" name=\"password\" value=\"%s\" placeholder=\"hidden\" /></td></tr> \
 <tr><td>MQTT URL:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"mqtturl\" value=\"%s\" /></td></tr> \
 <tr><td>MQTT username:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"mqttuser\" value=\"%s\" /></td></tr> \
-<tr><td>MQTT password:</td><td><input type=\"password\" autocorrect=\"off\" autocapitalize=\"none\" name=\"mqttpass\" value=\"%s\" /></td></tr> \
+<tr><td>MQTT password:</td><td><input type=\"password\" autocorrect=\"off\" autocapitalize=\"none\" name=\"mqttpass\" value=\"%s\" placeholder=\"hidden\" /></td></tr> \
 <tr><td>MQTT ID:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"mqttid\" value=\"%s\" /></td></tr> \
 <tr><td>NTP enabled:</td><td><input type=\"checkbox\" name=\"ntpenabled\" value=\"true\" %s/></td></tr> \
-<tr><td>NTP server:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ntpserver\" value=\"%s\" /></td></tr> \
+<tr><td>NTP server 1:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ntpserver1\" value=\"%s\" /></td></tr> \
+<tr><td>NTP server 2:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ntpserver2\" value=\"%s\" /></td></tr> \
 <tr><td>Timezone:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ntptimezone\" value=\"%s\" /></td></tr> \
 <tr><td>IP address:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"ip\" value=\"%s\" /></td></tr> \
 <tr><td>Gateway address:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"gw\" value=\"%s\" /></td></tr> \
 <tr><td>Netmask:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"netmask\" value=\"%s\" /></td></tr> \
+<tr><td>DNS server 1:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"dns1ip\" value=\"%s\" /></td></tr> \
+<tr><td>DNS server 2:</td><td><input type=\"text\" autocorrect=\"off\" autocapitalize=\"none\" name=\"dns2ip\" value=\"%s\" /></td></tr> \
 </tbody> \
 </table> \
  <p> \
@@ -55,7 +58,6 @@ these values will be issued by the WiFi access point." ;
 
 const char devlisthead[] = "<title>EQ3 devices</title> \
 <div style='text-align:center;'><h1>EQ3 devices found</h1></div> \
-<form action=\"ssidSelected\" method=\"post\"> \
 <table style=\"margin:1em auto;\"> \
 <tbody> ";
 
@@ -81,10 +83,9 @@ const char connectedstatus[] = "<title>EQ3 status</title> \
 <div style='text-align:center;'><h1>EQ3 relay status</h1></div> \
 <table style=\"margin:1em auto;\"> \
 <tr><td>MQTT URL:</td><td>%s</td></tr> \
-<tr><td>MQTT user:</td><td>%s</td></tr> \
-<tr><td>MQTT pass:</td><td>%s</td></tr> \
 <tr><td>MQTT ID:</td><td>%s</td></tr> \
 <tr><td>MQTT status:</td><td>%s</td></tr> \
+<tr><td>Uptime:</td><td>%d days %02d:%02d:%02d</td></tr> \
 </table>";
 
 const char apstatus[] = "<title>Please configure me</title> \

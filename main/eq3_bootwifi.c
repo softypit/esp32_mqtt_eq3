@@ -13,15 +13,15 @@
 #include <esp_err.h>
 #include <esp_system.h>
 #include <esp_event.h>
-#include <esp_event_loop.h>
 #include <esp_wifi.h>
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <driver/gpio.h>
-#include <tcpip_adapter.h>
+#include <esp_netif.h>
 #include <lwip/sockets.h>
 #include <lwip/apps/sntp.h>
 #include <mongoose.h>
+#include <sdkconfig.h>
 #include "eq3_bootwifi.h"
 #include "sdkconfig.h"
 #include "eq3_main.h"
@@ -36,9 +36,15 @@
 // we may try and boot with the wrong data.
 #define KEY_VERSION "version"
 /* Previous config version 1 */
-uint32_t g_old_version=0x0100;
-/* New config version 2 */
-uint32_t g_version=0x0200;
+uint32_t g_v1_version=0x0100;
+/* Previous config version 2 */
+uint32_t g_v2_version=0x0200;
+/* Newer config version 3 */
+uint32_t g_version=0x0300;
+
+/* esp netif object representing the WIFI AP */
+static esp_netif_t *ap_netif = NULL;
+static esp_netif_t *sta_netif = NULL;
 
 #define KEY_CONNECTION_INFO "connectionInfo" // Key used in NVS for connection info
 #define BOOTWIFI_NAMESPACE "bootwifi"        // Namespace in NVS for bootwifi
@@ -47,7 +53,7 @@ uint32_t g_version=0x0200;
 #define PASSWORD_SIZE (64)                   // Maximum password size
 #define ID_SIZE       (32)                   // Maximum MQTT clientID size
 #define MAX_URL_SIZE  (256)                  // Maximum url length
-#define SNTP_SERVER_SIZE (64)                // Maximum length of sntp server url
+#define SERVER_SIZE      (64)                // Maximum length of sntp/dns server url
 #define SNTP_TIMEZONE_SIZE (35)              // Maximum length of timezone parameter
 
 /* Non-volatile configuration parameters */
@@ -61,7 +67,8 @@ typedef struct {
     char mqttpass[PASSWORD_SIZE];
     char mqttid[ID_SIZE];
     tcpip_adapter_ip_info_t ipInfo;          // Optional static IP information
-} old_connection_info_t;
+} v1_connection_info_t;
+#define V1_CONNECTION_INFO_SIZE sizeof(v1_connection_info_t);
 
 /* Newer config structure - nvs save will place this structure in flash */
 typedef struct {
@@ -73,8 +80,25 @@ typedef struct {
     char mqttid[ID_SIZE];
     tcpip_adapter_ip_info_t ipInfo;          // Optional static IP information
     int ntpenabled;
-    char ntpserver[SNTP_SERVER_SIZE];
+    char ntpserver[SERVER_SIZE];
     char ntptimezone[SNTP_TIMEZONE_SIZE];
+} v2_connection_info_t;
+#define V2_CONNECTION_INFO_SIZE sizeof(v2_connection_info_t);
+
+typedef struct {
+    char ssid[SSID_SIZE];
+    char password[PASSWORD_SIZE];
+    char mqtturl[MAX_URL_SIZE];
+    char mqttuser[USERNAME_SIZE];
+    char mqttpass[PASSWORD_SIZE];
+    char mqttid[ID_SIZE];
+    esp_netif_ip_info_t ipInfo;          // Optional static IP information
+    int ntpenabled;
+    char ntpserver[SERVER_SIZE];
+    char ntptimezone[SNTP_TIMEZONE_SIZE];
+    char ntpserver2[SERVER_SIZE];
+    char dnsservers[2][SERVER_SIZE];
+    char spare[550];
 } connection_info_t;
 
 static connection_info_t connectionInfo;
@@ -185,7 +209,7 @@ static char *mgStrToStr(struct mg_str mgStr) {
     if(mgStr.len == 0)
         return NULL;
     char *retStr = (char *) malloc(mgStr.len + 1);
-    memcpy(retStr, mgStr.p, mgStr.len);
+    memcpy(retStr, mgStr.ptr, mgStr.len);
     retStr[mgStr.len] = 0;
     return retStr;
 } // mgStrToStr
@@ -209,8 +233,7 @@ static int mongoose_serve_content(struct mg_connection *nc, char *content, bool 
             apploc += sprintf(&htmlstr[apploc], pagefooter);
         else
             apploc += sprintf(&htmlstr[apploc], pageemptyfooter);
-        mg_send_head(nc, 200, strlen(htmlstr), "Content-Type: text/html");
-        mg_send(nc, htmlstr, strlen(htmlstr));
+        mg_http_reply(nc, 200, "Content-Type: text/html\n", "%s", htmlstr);
         free(htmlstr);
     }else{
         ESP_LOGI(tag, "No free memory to server web page");
@@ -223,17 +246,19 @@ static int mongoose_serve_content(struct mg_connection *nc, char *content, bool 
 static int mongoose_serve_config_page(struct mg_connection *nc){
     int rc = getConnectionInfo(&connectionInfo);
     //char *htmlstr = malloc(strlen(selectap) + 100);
-    char *htmlstr = malloc(2500);
+    char *htmlstr = malloc(3100);
     const char nullstr[] = "";
     char *sptr = (char *)nullstr, *pptr = (char *)nullstr, *murlptr = (char *)nullstr, *muserptr = (char *)nullstr, *mpassptr = (char *)nullstr, *midptr = (char *)nullstr;
     char *ibuf = (char *)nullstr, *gbuf = (char *)nullstr, *mbuf = (char *)nullstr;
     char ipbuf[20], gwbuf[20], maskbuf[20];
     if(rc == 0){
         sptr = connectionInfo.ssid;
-        pptr = connectionInfo.password;
+        /* DO NOT serve current password as this can be read from the client if the ESP32 has dropped into AP mode when it couldn't connect as STA */
+        //pptr = connectionInfo.password;
         murlptr = connectionInfo.mqtturl;
         muserptr = connectionInfo.mqttuser;
-        mpassptr = connectionInfo.mqttpass; 
+        /* DO NOT serve current password as this can be read from the client if the ESP32 has dropped into AP mode when it couldn't connect as STA */
+        //mpassptr = connectionInfo.mqttpass;
         midptr = connectionInfo.mqttid;
         if(connectionInfo.ipInfo.ip.addr != 0)
             ibuf = (char *)inet_ntop(AF_INET, &connectionInfo.ipInfo.ip, ipbuf, sizeof(ipbuf));
@@ -242,10 +267,10 @@ static int mongoose_serve_config_page(struct mg_connection *nc){
         if(connectionInfo.ipInfo.netmask.addr != 0)
             mbuf = (char *)inet_ntop(AF_INET, &connectionInfo.ipInfo.netmask, maskbuf, sizeof(maskbuf));
     }
-    sprintf(htmlstr, selectap, sptr, pptr, murlptr, muserptr, mpassptr, midptr, connectionInfo.ntpenabled != 0 ? "checked=\"checked\"" : "", connectionInfo.ntpserver, connectionInfo.ntptimezone, ibuf == NULL ? nullstr : ibuf, gbuf == NULL ? nullstr : gbuf, mbuf == NULL ? nullstr : mbuf);
+    sprintf(htmlstr, selectap, sptr, pptr, murlptr, muserptr, mpassptr, midptr, connectionInfo.ntpenabled != 0 ? "checked=\"checked\"" : "", connectionInfo.ntpserver, connectionInfo.ntpserver2, connectionInfo.ntptimezone, ibuf == NULL ? nullstr : ibuf, gbuf == NULL ? nullstr : gbuf, mbuf == NULL ? nullstr : mbuf, connectionInfo.dnsservers[0], connectionInfo.dnsservers[1]);
     mongoose_serve_content(nc, htmlstr, true);
     free(htmlstr);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
 
@@ -282,7 +307,7 @@ static int mongoose_serve_device_list(struct mg_connection *nc){
         /* No devices found */
         mongoose_serve_content(nc, (char *)nodevices, true);
     }
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
 
@@ -318,7 +343,7 @@ static int mongoose_serve_command_list(struct mg_connection *nc){
         /* No devices found */
         mongoose_serve_content(nc, (char *)nodevices, true);
     }
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
         
@@ -340,7 +365,7 @@ static int mongoose_serve_log(struct mg_connection *nc){
     }
     mongoose_serve_content(nc, loglisthtml, true);
     free(loglisthtml);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
 
@@ -348,27 +373,37 @@ static int mongoose_serve_log(struct mg_connection *nc){
 static int mongoose_serve_status(struct mg_connection *nc){
     if(sta_configured == false){
         mongoose_serve_content(nc, (char *)apstatus, true);
-        nc->flags |= MG_F_SEND_AND_CLOSE;
+        //nc->flags |= MG_F_SEND_AND_CLOSE;
     }else{
         char status[14];
+        int64_t uptime = esp_timer_get_time();
+        uint32_t days;
+        uint8_t hours, minutes;
         mqttconnstate connected = ismqttconnected();
         switch(connected){
             case MQTT_CONFIG_ERROR:
-                sprintf(status, "config error");
+                sprintf(status, "Config error");
                 break;
             case MQTT_CONNECTED:
-                sprintf(status, "connected");
+                sprintf(status, "Connected");
                 break;
             case MQTT_NOT_CONNECTED:
             default:
-                sprintf(status, "not connected");
+                sprintf(status, "Not connected");
                 break;
         }
-        char *htmlstr = malloc(strlen(connectedstatus) + strlen(connectionInfo.mqtturl) + strlen(connectionInfo.mqttuser) + strlen(connectionInfo.mqttpass) + strlen(connectionInfo.mqttid) + 15);
-        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttuser, connectionInfo.mqttpass, connectionInfo.mqttid, status);
+        uptime /= 1000000;
+        days = uptime / 86400;
+        uptime -= (days * 86400);
+        hours = uptime / 3600;
+        uptime -= (hours * 3600);
+        minutes = uptime / 60;
+        uptime -= (minutes * 60);
+        char *htmlstr = malloc(strlen(connectedstatus) + strlen(connectionInfo.mqtturl) + strlen(connectionInfo.mqttid) + 15 + 10);
+        sprintf(htmlstr, connectedstatus, connectionInfo.mqtturl, connectionInfo.mqttid, status, days, hours, minutes, (uint8_t)uptime);
         mongoose_serve_content(nc, htmlstr, true);
         free(htmlstr);
-        nc->flags |= MG_F_SEND_AND_CLOSE;
+        //nc->flags |= MG_F_SEND_AND_CLOSE;
     }            
     return 0;
 }
@@ -376,7 +411,7 @@ static int mongoose_serve_status(struct mg_connection *nc){
 /* Serve the upload page */
 static int mongoose_serve_upload(struct mg_connection *nc){
     mongoose_serve_content(nc, (char *)upload, true);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
 
@@ -396,7 +431,7 @@ static int mongoose_serve_ota_result(struct mg_connection *nc){
         sprintf(htmlstr, uploadfailed);
     mongoose_serve_content(nc, htmlstr, true);
     free(htmlstr);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    //nc->flags |= MG_F_SEND_AND_CLOSE;
     return 0;
 }
 
@@ -423,22 +458,19 @@ static char *getqueryarg(const char *argstr, const char *argname){
 
 /**
  * Handle mongoose events.  These are mostly requests to process incoming
- * browser requests.  The ones we handle are:
- * GET / - Send the enter details page.
- * GET /set - Set the connection info (REST request).
- * POST /ssidSelected - Set the connection info (HTML FORM).
+ * browser requests.
  */
-static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evData) {
+static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evData, void *fn_data) {
     //ESP_LOGI(tag, "- Event: %s", mongoose_eventToString(ev));
     switch (ev) {
-        case MG_EV_HTTP_REQUEST: {
-            struct http_message *message = (struct http_message *) evData;
+        case MG_EV_HTTP_MSG: {
+            struct mg_http_message *message = (struct mg_http_message *) evData;
             char *uri = mgStrToStr(message->uri);
-            char *query = mgStrToStr(message->query_string);
+            char *query = mgStrToStr(message->query);
             ESP_LOGI(tag, "http request uri: %s", uri);
             if(query != NULL)
                 ESP_LOGI(tag, "http query: %s", query);
-            
+            /* ReST API set command */
             if (strcmp(uri, "/set") ==0 ) {
                 char *devstr, *cmdstr, *valstr;
                 char request[50];
@@ -453,12 +485,12 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                         sprintf(request, "%s %s", devstr, cmdstr);
                     ESP_LOGI(tag, "Http set command %s\n", request);
                     if(handle_request(request) == 0){
-                        mg_send_head(nc, 200, 0, "Content-Type: text/plain");
+                        mg_http_reply(nc, 200, 0, "Content-Type: text/plain\n", "");
                     }else{
-                        mg_send_head(nc, 400, 0, "Content-Type: text/plain");
+                        mg_http_reply(nc, 400, 0, "Content-Type: text/plain\n", "");
                     }
                 }else{
-                    mg_send_head(nc, 400, 0, "Content-Type: text/plain");
+                    mg_http_reply(nc, 400, 0, "Content-Type: text/plain\n", "");
                 }
                 if(devstr != NULL)
                     free(devstr);
@@ -466,58 +498,60 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                     free(cmdstr);
                 if(valstr != NULL)
                     free(valstr);
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
             }else if (strcmp(uri, "/") == 0) {
                 if(sta_configured == false)
                     mongoose_serve_config_page(nc);
                 else
                     mongoose_serve_status(nc);
-            }else if(strcmp(uri, "/ssidSelected") == 0) {
-                // Handle /ssidSelected
-                // This is an incoming form with properties:
-                // * ssid - The ssid of the network to connect against.
-                // * password - the password to use to connect.
-                // * ip - Static IP address ... may be empty
-                // * gw - Static GW address ... may be empty
-                // * netmask - Static netmask ... may be empty
-                ESP_LOGD(tag, "- body: %.*s", message->body.len, message->body.p);
-                connection_info_t connectionInfo;
-                mg_get_http_var(&message->body, "ssid",	connectionInfo.ssid, SSID_SIZE);
-                mg_get_http_var(&message->body, "password", connectionInfo.password, PASSWORD_SIZE);
-
-                mg_get_http_var(&message->body, "mqtturl", connectionInfo.mqtturl, SSID_SIZE);
-                mg_get_http_var(&message->body, "mqttuser", connectionInfo.mqttuser, SSID_SIZE);
-                mg_get_http_var(&message->body, "mqttpass", connectionInfo.mqttpass, SSID_SIZE);
-                mg_get_http_var(&message->body, "mqttid", connectionInfo.mqttid, ID_SIZE);
+            }else if(strcmp(uri, "/configSubmit") == 0) {
+                char newpass[PASSWORD_SIZE];
+                ESP_LOGD(tag, "- body: %.*s", message->body.len, message->body.ptr);
+                //connection_info_t connectionInfo;
+                mg_http_get_var(&message->body, "ssid",	connectionInfo.ssid, SSID_SIZE);
+                newpass[0] = 0;
+                mg_http_get_var(&message->body, "password", newpass, PASSWORD_SIZE);
+                if(strlen(newpass) > 0){
+                    strcpy(connectionInfo.password, newpass);
+                    ESP_LOGI(tag, "Set STA password to %s", newpass);
+                }
+                mg_http_get_var(&message->body, "mqtturl", connectionInfo.mqtturl, SSID_SIZE);
+                mg_http_get_var(&message->body, "mqttuser", connectionInfo.mqttuser, SSID_SIZE);
+                newpass[0] = 0;
+                mg_http_get_var(&message->body, "mqttpass", newpass, PASSWORD_SIZE);
+                if(strlen(newpass) > 0){
+                    strcpy(connectionInfo.mqttpass, newpass);
+                    ESP_LOGI(tag, "Set MQTT password to %s", newpass);
+                }
+                mg_http_get_var(&message->body, "mqttid", connectionInfo.mqttid, ID_SIZE);
                 
                 connectionInfo.ntpenabled = 0;
                 char enabled[10];
-                mg_get_http_var(&message->body, "ntpenabled", enabled, 10);
+                mg_http_get_var(&message->body, "ntpenabled", enabled, 10);
                 if(strncmp(enabled, "true", 4) == 0)
                     connectionInfo.ntpenabled = 1;
-                mg_get_http_var(&message->body, "ntpserver", connectionInfo.ntpserver, SNTP_SERVER_SIZE);
-                mg_get_http_var(&message->body, "ntptimezone", connectionInfo.ntptimezone, SNTP_TIMEZONE_SIZE);
+                mg_http_get_var(&message->body, "ntpserver1", connectionInfo.ntpserver, SERVER_SIZE);
+                mg_http_get_var(&message->body, "ntpserver2", connectionInfo.ntpserver2, SERVER_SIZE);
+                mg_http_get_var(&message->body, "ntptimezone", connectionInfo.ntptimezone, SNTP_TIMEZONE_SIZE);
 
                 char ipBuf[20];
-                if (mg_get_http_var(&message->body, "ip", ipBuf, sizeof(ipBuf)) > 0) {
+                if (mg_http_get_var(&message->body, "ip", ipBuf, sizeof(ipBuf)) > 0) {
                     inet_pton(AF_INET, ipBuf, &connectionInfo.ipInfo.ip);
-                } else {
+                }else{
                     connectionInfo.ipInfo.ip.addr = 0;
                 }
-
-                if (mg_get_http_var(&message->body, "gw", ipBuf, sizeof(ipBuf)) > 0) {
+                if (mg_http_get_var(&message->body, "gw", ipBuf, sizeof(ipBuf)) > 0) {
                     inet_pton(AF_INET, ipBuf, &connectionInfo.ipInfo.gw);
-                }
-                else {
+                }else{
                     connectionInfo.ipInfo.gw.addr = 0;
                 }
-
-                if (mg_get_http_var(&message->body, "netmask", ipBuf, sizeof(ipBuf)) > 0) {
+                if (mg_http_get_var(&message->body, "netmask", ipBuf, sizeof(ipBuf)) > 0) {
                     inet_pton(AF_INET, ipBuf, &connectionInfo.ipInfo.netmask);
-                }
-                else {
+                }else{
                     connectionInfo.ipInfo.netmask.addr = 0;
                 }
+                mg_http_get_var(&message->body, "dns1ip", connectionInfo.dnsservers[0], SERVER_SIZE);
+                mg_http_get_var(&message->body, "dns2ip", connectionInfo.dnsservers[1], SERVER_SIZE);
 
                 ESP_LOGI(tag, "ssid: %s, password: %s", connectionInfo.ssid, connectionInfo.password);
 
@@ -525,29 +559,29 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 
                 if(sta_configured == false){
                     ESP_LOGI(tag, "Config applied while in AP mode - switch to STA");
-                    mg_send_head(nc, 200, 0, "Content-Type: text/plain");
+                    mg_http_reply(nc, 200, 0, "Content-Type: text/plain\n", "");
                     bootWiFi2();
                 }else{
                     ESP_LOGI(tag, "Config applied in STA mode - reboot");
                     mongoose_serve_content(nc, (char *)rebooting, false);
                     schedule_reboot();
                 }
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
             }else if(strcmp(uri, "/sendCommand") == 0){
                 char devstr[19];
                 char cmdstr[16];
                 char valstr[15];
                 char request[50];
-                mg_get_http_var(&message->body, "device", devstr, 18);
-                mg_get_http_var(&message->body, "command", cmdstr, 15);
-                mg_get_http_var(&message->body, "value", valstr, 14);
+                mg_http_get_var(&message->body, "device", devstr, 18);
+                mg_http_get_var(&message->body, "command", cmdstr, 15);
+                mg_http_get_var(&message->body, "value", valstr, 14);
                 sprintf(request, "%s %s %s", devstr, cmdstr, valstr);
                 if(handle_request(request) == 0){
                     mongoose_serve_content(nc, (char *)commandsubmitted, true);
                 }else{
                     mongoose_serve_content(nc, (char *)commanderror, true);
                 }
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
 			}else if(strcmp(uri, "/getdevices") == 0){
                 mongoose_serve_device_list(nc);
             }else if(strcmp(uri, "/status") == 0){
@@ -555,13 +589,14 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
             }else if(strcmp(uri, "/scan") == 0){
                 start_scan();
                 mongoose_serve_content(nc, (char *)scanning, true);
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
             }else if(strcmp(uri, "/upload") == 0){
                 mongoose_serve_upload(nc);
-            }else if(strcmp(uri, "/otaupload") == 0){
+            //}else if(strcmp(uri, "/otaupload") == 0){
                 /* Response to upload wait for 1 second before refreshing with the status page to allow update pass/fail to be decided */
-                mongoose_serve_content(nc, (char *)uploadcomplete, true);
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+            //    mongoose_serve_content(nc, (char *)uploadcomplete, true);
+            //    nc->is_draining = 1;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
             }else if(strcmp(uri, "/otastatus") == 0){
                 mongoose_serve_ota_result(nc);
             }else if(strcmp(uri, "/command") == 0){    
@@ -570,7 +605,7 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                 mongoose_serve_log(nc);
             }else if(strcmp(uri, "/restartnow") == 0){  
                 mongoose_serve_content(nc, (char *)rebooting, false);
-                nc->flags |= MG_F_SEND_AND_CLOSE;
+                //nc->flags |= MG_F_SEND_AND_CLOSE;
                 schedule_reboot();
             }
             // Else ... unknown URL
@@ -587,19 +622,18 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
             
         } // MG_EV_HTTP_REQUEST
         case MG_EV_HTTP_CHUNK: {
-            struct http_message *message = (struct http_message *) evData;
+            struct mg_http_message *message = (struct mg_http_message *) evData;
             char *uri = mgStrToStr(message->uri);
             //ESP_LOGI(tag, "httpchunk - uri: %s", uri);
             if(strcmp(uri, "/otaupload") == 0){
                 esp_err_t err;
-                int writelen = message->body.len;
-                uint8_t *start = (uint8_t *)message->body.p;
+                static int remlen = 0;
+                int writelen = message->chunk.len;
+                uint8_t *start = (uint8_t *)message->chunk.ptr;
                 /* MG_EV_HTTP_CHUNK received for each chunk */
-                //ESP_LOGI(tag, "Got chunk size %d", message->body.len);
-                /* Copy chunk to filesystem */
-                nc->flags |= MG_F_DELETE_CHUNK;
                 
                 if(update_partition == NULL){
+                    remlen = message->body.len - writelen;
                     /* On first chunk */
                     update_partition = esp_ota_get_next_update_partition(NULL);
                     ota_handle_valid = false;
@@ -627,8 +661,9 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                             start += 4;
                         }
                     }
+                }else{
+                    remlen -= writelen;
                 }
-                
                 if(writelen > 0){
                     if(ota_handle_valid == true){
                         /* For each chunk */
@@ -646,7 +681,11 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                                 break;
                         }
                     }
-                }else{
+                }
+                mg_http_delete_chunk(nc, message);
+                //ESP_LOGI(tag, "Remaining %d", remlen);
+                if(remlen <= 0){
+                    //ESP_LOGI(tag, "Bodylen is %d, Msglen is %d", message->body.len, message->message.len);
                     if(ota_handle_valid == true){
                         ESP_LOGI(tag, "OTA complete - %d bytes received", ota_size);
                         ota_success = true;
@@ -656,14 +695,18 @@ static void mongoose_event_handler(struct mg_connection *nc, int ev, void *evDat
                         err = esp_ota_set_boot_partition(update_partition);
                     }
                     update_partition = NULL;
+                    mongoose_serve_content(nc, (char *)uploadcomplete, true);
+                    nc->is_draining = 1;
                 }
+            }else{
+                mg_http_delete_chunk(nc, message);
             }
             free(uri);
             break;
         } // MG_EV_HTTP_CHUNK
         default:
-            //if(ev != 0)
-            //    ESP_LOGI(tag, "Got %x", ev);
+            //if(ev != 0 && ev != MG_EV_POLL)
+            //    ESP_LOGI(tag, "Event %x", ev);
             break;
     } // End of switch
 } // End of mongoose_event_handler
@@ -677,10 +720,8 @@ static void mongooseTask(void *data) {
     ESP_LOGD(tag, ">> mongooseTask");
     g_mongooseStopRequest = 0; // Unset the stop request since we are being asked to start.
 
-    mg_mgr_init(&mgr, NULL);
-
-    connection = mg_bind(&mgr, ":80", mongoose_event_handler);
-
+    mg_mgr_init(&mgr);
+    connection = mg_http_listen(&mgr, "http://0.0.0.0:80", mongoose_event_handler, NULL);
     if (connection == NULL) {
         ESP_LOGE(tag, "No connection from the mg_bind().");
         mg_mgr_free(&mgr);
@@ -688,7 +729,6 @@ static void mongooseTask(void *data) {
         vTaskDelete(NULL);
         return;
     }
-    mg_set_protocol_http_websocket(connection);
 
     // Keep processing until we are flagged that there is a stop request.
     while (!g_mongooseStopRequest) {
@@ -718,11 +758,10 @@ static void becomeStation(connection_info_t *pConnectionInfo);
 static void becomeAccessPoint();
 
 static int setStatusLed(int on) {
-#ifdef STATUS_LED_GPIO
-    gpio_pad_select_gpio(STATUS_LED_GPIO);
-    gpio_set_direction(STATUS_LED_GPIO, GPIO_MODE_OUTPUT);
-    //gpio_set_pull_mode(BOOTWIFI_OVERRIDE_GPIO, GPIO_PULLUP_ONLY);
-    return gpio_set_level(STATUS_LED_GPIO, on);
+#if defined(CONFIG_ENABLE_STATUS_LED) && defined(CONFIG_STATUS_LED_GPIO)
+    gpio_pad_select_gpio(CONFIG_STATUS_LED_GPIO);
+    gpio_set_direction(CONFIG_STATUS_LED_GPIO, GPIO_MODE_OUTPUT);
+    return gpio_set_level(CONFIG_STATUS_LED_GPIO, on);
 #else
     return 1; 
 #endif
@@ -746,13 +785,15 @@ static int setStatusLed(int on) {
  * SYSTEM_EVENT_STA_STOP
  * SYSTEM_EVENT_WIFI_READY
  */
-static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
-    // Your event handling code here...
-    switch(event->event_id) {
+
+static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data){
+    switch(event_id) {
         // When we have started being an access point, then start being a web server.
-        case SYSTEM_EVENT_AP_START: { // Handle the AP start event
-            tcpip_adapter_ip_info_t ip_info;
-            tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info);
+        case WIFI_EVENT_AP_START: { // Handle the AP start event
+            //tcpip_adapter_ip_info_t ip_info;
+            esp_netif_ip_info_t ip_info;
+            //tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info);
+            esp_netif_get_ip_info(ap_netif, &ip_info);
             ESP_LOGI(tag, "**********************************************");
             ESP_LOGI(tag, "* We are now an access point and you can point");
             ESP_LOGI(tag, "* your browser to http://" IPSTR, IP2STR(&ip_info.ip));
@@ -767,10 +808,10 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
                 g_callback(0);
             }
             break;
-        } // SYSTEM_EVENT_AP_START
+        } // WIFI_EVENT_AP_START
 
         // If we fail to connect to an access point as a station, become an access point.
-        case SYSTEM_EVENT_STA_DISCONNECTED: {
+        case WIFI_EVENT_STA_DISCONNECTED: {
             ESP_LOGD(tag, "Station disconnected started");
             // We think we tried to connect as a station and failed! ... become
             // an access point.
@@ -783,14 +824,15 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
                 becomeStation(&connectionInfo);
             }
             break;
-        } // SYSTEM_EVENT_AP_START
+        } // WIFI_EVENT_AP_START
 
-        // If we connected as a station then we are done and we can stop being a
-        // web server.
-        case SYSTEM_EVENT_STA_GOT_IP: {
+        // If we connected as a station then we are done and we can stop being a web server.
+        case IP_EVENT_STA_GOT_IP: {
+            ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+            const esp_netif_ip_info_t *ip_info = &event->ip_info;
             ESP_LOGI(tag, "********************************************");
             ESP_LOGI(tag, "* We are now connected and ready to do work!");
-            ESP_LOGI(tag, "* - Our IP address is: " IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
+            ESP_LOGI(tag, "* - Our IP address is: " IPSTR, IP2STR(&ip_info->ip));
             ESP_LOGI(tag, "********************************************");
             connattempts = 0;
 
@@ -813,20 +855,14 @@ static esp_err_t esp32_wifi_eventHandler(void *ctx, system_event_t *event) {
             }
 #endif
             break;
-        } // SYSTEM_EVENT_STA_GOTIP
+        } // IP_EVENT_STA_GOTIP
 
         default: // Ignore the other event types
             break;
     } // Switch event
-
-    return ESP_OK;
 } // esp32_wifi_eventHandler
 
-
-/**
- * Retrieve the connection info.  A rc==0 means ok.
- */
-//static int getConnectionInfo(connection_info_t *pConnectionInfo) {
+/* Retrieve the connection info.  A rc == 0 means ok. */
 int getConnectionInfo(connection_info_t *pConnectionInfo) {
     nvs_handle handle;
     size_t size;
@@ -842,6 +878,9 @@ int getConnectionInfo(connection_info_t *pConnectionInfo) {
     pConnectionInfo->ntptimezone[0] = 0;
     pConnectionInfo->ntpenabled = 0;
     sprintf(pConnectionInfo->ntpserver, "pool.ntp.org");
+    pConnectionInfo->ntpserver2[0] = 0;
+    pConnectionInfo->dnsservers[0][0] = 0;
+    pConnectionInfo->dnsservers[1][0] = 0;
 
     // Get the version that the data was saved against.
     err = nvs_get_u32(handle, KEY_VERSION, &version);
@@ -851,11 +890,20 @@ int getConnectionInfo(connection_info_t *pConnectionInfo) {
         return -1;
     }
 
+    err = nvs_get_blob(handle, KEY_CONNECTION_INFO, NULL, &size);
+    if (err != ESP_OK) {
+        ESP_LOGE(tag, "No connection record found (%d).", err);
+        nvs_close(handle);
+        return -1;
+    }
     if ((version & 0xff00) != (g_version & 0xff00)) {
-        // Check for previous config structure
-        if ((version & 0xff00) == (g_old_version & 0xff00)) {
-            ESP_LOGI(tag, "Older version of config (%x), found. New options will be default. Please re-save", version);
-            size = sizeof(old_connection_info_t);
+        ESP_LOGI(tag, "Config versions differ ... current is %x, found is %x", g_version, version);
+        /* Check for previous config structure */
+        ESP_LOGI(tag, "Older version of config (%x), found. New options will be default. Please re-save", version);
+        if ((version & 0xff00) == (g_v1_version & 0xff00)) {
+            size = V1_CONNECTION_INFO_SIZE;
+        }else if ((version & 0xff00) == (g_v2_version & 0xff00)) {
+            size = V2_CONNECTION_INFO_SIZE;
         }else{
             ESP_LOGI(tag, "Incompatible versions ... current is %x, found is %x", g_version, version);
             nvs_close(handle);
@@ -887,10 +935,7 @@ int getConnectionInfo(connection_info_t *pConnectionInfo) {
     return 0;
 } // getConnectionInfo
 
-
-/**
- * Save our connection info for retrieval on a subsequent restart.
- */
+/* Save our connection info for retrieval on a subsequent restart. */
 static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
     nvs_handle handle;
     ESP_ERROR_CHECK(nvs_open(BOOTWIFI_NAMESPACE, NVS_READWRITE, &handle));
@@ -900,29 +945,41 @@ static void saveConnectionInfo(connection_info_t *pConnectionInfo) {
     nvs_close(handle);
 } // setConnectionInfo
 
-/**
- * Become a station connecting to an existing access point.
- */
+/* Become a station connecting to an existing access point. */
 static void becomeStation(connection_info_t *pConnectionInfo) {
     ESP_LOGI(tag, "- Connecting to access point \"%s\" ...", pConnectionInfo->ssid);
     assert(strlen(pConnectionInfo->ssid) > 0);
     
     /* If this is a retry don't re-initialise sta mode */
     if(sta_configured == false){
+        esp_netif_dns_info_t dnsaddr;
+
         ESP_ERROR_CHECK(esp_wifi_stop());
-        // If we have a static IP address information, use that.
+        /* If we have a static IP address information, use that. */
         if (pConnectionInfo->ipInfo.ip.addr != 0) {
             ESP_LOGI(tag, " - using a static IP address of " IPSTR, IP2STR(&pConnectionInfo->ipInfo.ip));
-            tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
-            tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &pConnectionInfo->ipInfo);
+            esp_netif_dhcpc_stop(sta_netif);
+            esp_netif_set_ip_info(sta_netif, &pConnectionInfo->ipInfo);
         } else {
-            tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA);
+            esp_netif_dhcpc_start(sta_netif);
+        }
+        if(pConnectionInfo->dnsservers[0][0] != 0){
+            inet_pton(AF_INET, pConnectionInfo->dnsservers[0], &dnsaddr.ip.u_addr.ip4.addr);
+            dnsaddr.ip.type = ESP_IPADDR_TYPE_V4;
+            ESP_LOGI(tag, " - using a static DNS address of %s", pConnectionInfo->dnsservers[0]);
+            esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dnsaddr);
+        }
+        if(pConnectionInfo->dnsservers[1][0] != 0){
+            inet_pton(AF_INET, pConnectionInfo->dnsservers[1], &dnsaddr.ip.u_addr.ip4.addr);
+            dnsaddr.ip.type = ESP_IPADDR_TYPE_V4;
+            ESP_LOGI(tag, " - using a static DNS2 address of %s", pConnectionInfo->dnsservers[1]);
+            esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dnsaddr);
         }
         if(strlen(pConnectionInfo->mqttid) == 0){
-            tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, "EQ3-heatcontroller");
+            esp_netif_set_hostname(sta_netif, "EQ3-heatcontroller");
             ESP_LOGI(tag, "Hostname EQ3-heatcontroller");
         }else{
-            tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA, pConnectionInfo->mqttid);
+            esp_netif_set_hostname(sta_netif, pConnectionInfo->mqttid);
             ESP_LOGI(tag, "Hostname %s", pConnectionInfo->mqttid);
         }
         ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
@@ -933,17 +990,12 @@ static void becomeStation(connection_info_t *pConnectionInfo) {
         memcpy(sta_config.sta.password, pConnectionInfo->password, PASSWORD_SIZE);
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
         sta_configured = true;
-    //}
-    
         ESP_ERROR_CHECK(esp_wifi_start());
     }
     ESP_ERROR_CHECK(esp_wifi_connect());
 } // becomeStation
 
-
-/**
- * Become an access point.
- */
+/* Become an access point. */
 static void becomeAccessPoint() {
     ESP_LOGI(tag, "- Starting being an access point ...");
     // We don't have connection info so be an access point!
@@ -954,9 +1006,14 @@ static void becomeAccessPoint() {
         .ap = {
             .ssid="HeatingController",
             .ssid_len=0,
+#ifdef CONFIG_APMODE_PASSWORD
+            .password=CONFIG_APMODE_PASSWORD,
+            .authmode=WIFI_AUTH_WPA2_PSK,
+#else
             .password="password",
-            .channel=0,
             .authmode=WIFI_AUTH_OPEN,
+#endif
+            .channel=0,
             .ssid_hidden=0,
             .max_connection=4,
             .beacon_interval=100
@@ -966,7 +1023,6 @@ static void becomeAccessPoint() {
     ESP_ERROR_CHECK(esp_wifi_start());
 } // becomeAccessPoint
 
-
 /**
  * Retrieve the signal level on the OVERRIDE_GPIO pin.  This is used to
  * indicate that we should not attempt to connect to any previously saved
@@ -974,11 +1030,11 @@ static void becomeAccessPoint() {
  */
 
 static int checkOverrideGpio() {
-#ifdef BOOTWIFI_OVERRIDE_GPIO
-    gpio_pad_select_gpio(BOOTWIFI_OVERRIDE_GPIO);
-    gpio_set_direction(BOOTWIFI_OVERRIDE_GPIO, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(BOOTWIFI_OVERRIDE_GPIO, GPIO_PULLUP_ONLY);
-    return gpio_get_level(BOOTWIFI_OVERRIDE_GPIO);
+#if defined(CONFIG_ENABLE_AP_OVERRIDE_GPIO) && defined(CONFIG_BOOTWIFI_OVERRIDE_GPIO)
+    gpio_pad_select_gpio(CONFIG_BOOTWIFI_OVERRIDE_GPIO);
+    gpio_set_direction(CONFIG_BOOTWIFI_OVERRIDE_GPIO, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(CONFIG_BOOTWIFI_OVERRIDE_GPIO, GPIO_PULLUP_ONLY);
+    return gpio_get_level(CONFIG_BOOTWIFI_OVERRIDE_GPIO);
 #else
     return 1; // If no boot override, return high
 #endif
@@ -1028,33 +1084,43 @@ void restart_station(void){
     becomeStation(&connectionInfo);
 }
 
-/**
- * Main entry into bootWiFi
- */
+/* Main entry into bootWiFi */
 void bootWiFi(bootwifi_callback_t callback, bootwifi_parms_t parmcb) {
     ESP_LOGD(tag, ">> bootWiFi");
     g_callback = callback;
     g_parms = parmcb;
     nvs_flash_init();
-    tcpip_adapter_init();
-    ESP_ERROR_CHECK(esp_event_loop_init(esp32_wifi_eventHandler, NULL));
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    ap_netif = esp_netif_create_default_wifi_ap();
+    sta_netif = esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, NULL));
 
     bootWiFi2();
 
     ESP_LOGD(tag, "<< bootWiFi");
 } // bootWiFi
 
+/* Is ntp enabled */
 bool ntp_enabled(void){
     return connectionInfo.ntpenabled == 0 ? false : true;
 }
 
-char *getntpserver(void){
+/* Get ntp server details */
+char *getntpserver(int idx){
+    if(idx > 0)
+        return connectionInfo.ntpserver2;
     return connectionInfo.ntpserver;
 }
 
+/* Get the timezone */
 char *getntptimezone(void){
     return connectionInfo.ntptimezone;
 }

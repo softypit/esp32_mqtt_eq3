@@ -44,11 +44,14 @@ On first use the ESP32 will start in access-point mode appearing as 'HeatingCont
 | mqttpass | mqtt broker password | |
 | mqttid | the unique id for this device to use with the mqtt broker __(max 20 characters)__ | livingroom |
 | ntp enabled | enable network time protocol support | |
-| ntp server | url for ntp server | pool.ntp.org |
+| ntp server1 | url for ntp server | pool.ntp.org |
+| ntp server2 | url for ntp server | europe.pool.ntp.org |
 | timezone | timezone in TZ format | GMT0BST,M3.5.0/2,M11.5.0/2 |
 | ip | fixed IP for WiFi network (leave blank to DHCP) | |
 | gw | gateway IP for WiFi network (leave blank for DHCP) | |
 | netmask | netmask for WiFi network (leave blank for DHCP) | |
+| DNS server1 | url for ntp server | 8.8.8.8 |
+| DNS server2 | url for ntp server | 4.4.4.4 |
 
 Once the ESP32 is running in client mode the configuration page can be accessed on the webserver at /config
 
@@ -128,7 +131,6 @@ Once configuration is complete and on subsequent boots the configured details ar
 ## Developer notes
 
 web server is part of Mongoose - https://github.com/cesanta/mongoose
-<br>~~MQTT library is https://github.com/tuanpmt/espmqtt~~
 
 ## Testing
 ```
@@ -170,3 +172,17 @@ mosquitto_pub -h 127.0.0.1 -p 1883 -t "<mqttid>radin/trv" -m "ab:cd:ef:gh:ij:kl 
 * Paul ([@softypit](https://github.com/softypit))
 * [@ul-gh](https://github.com/ul-gh)
 * Peter Becker ([@floyddotnet](https://github.com/floyddotnet))
+
+### Notes
+
+version 1.6 has been ported to use ESP IDF 4.3.1 and Mongoose Embedded Networking Library 7.4.
+Various tweaks and bugfixes have been applied including addition of two DNS servers for use in fixed-IP mode and a second NTP server.
+A timeout has been added to BLE operations to attempt to prevent the 'freeze-up' experienced occasionally on previous versions.
+
+### Compiling
+
+menuconfig options allow setting of some parameters at compile time.
+
+* The boot-mode GPIO pin (normally a button on GPIO 0 on many ESP32 platforms) used to force the device into AP mode at boot.
+* Status LED GPIO which indicates if the device is in AP mode.
+* Password for AP mode (enables WPA2PSK) to prevent unwanted access should the device go into AP mode when it is unable to connect to its configured Access Point.

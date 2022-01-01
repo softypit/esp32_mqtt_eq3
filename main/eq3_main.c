@@ -88,18 +88,18 @@
 #define UNKNOWN                  0x40
 #define LOW_BATTERY              0x80
 
+static bool wifistartdelay = true;     /* Should we delay before connecting wifi at boot */
+static bool reboot_requested = false;  /* This never gets reset once a reboot is requested */
+
 /* Allow delay of next GATTC command */
 struct tmrcmd{
     bool running;
     int cmd;
     int countdown;
 };
-
-static bool wifistartdelay = true;
-static bool reboot_requested = false;
-
 static struct tmrcmd nextcmd;
 
+/* Set the next command to run after a delay */
 static int setnextcmd(int cmd, int time_s){
     if(nextcmd.running != true){
         nextcmd.cmd = cmd;
@@ -114,6 +114,9 @@ static int setnextcmd(int cmd, int time_s){
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 
+/* Define REQUEUE_RETRY to push a retry attempt for a command to the back of the queue. This means that if a list of trv commands is present an out-of-service
+ * trv cannot hold-off the other valves for its entire retry cycle */
+#define REQUEUE_RETRY
 
 #define EQ3_CMD_DONE    0
 #define EQ3_CMD_RETRY   1
@@ -161,19 +164,36 @@ static esp_bt_uuid_t eq3_resp_filter_char_uuid = {
     .uuid = {.uuid128 = {0x2a, 0xeb, 0xe0, 0xf4, 0x90, 0x6c, 0x41, 0xaf, 0x96, 0x09, 0x29, 0xcd, 0x4d, 0x43, 0xe8, 0xd0},},
 };
 
-/* Current TRV command being sent to EQ-3 */ 
-uint16_t cmd_len = 0;
-uint8_t cmd_val[20] = {0};
-esp_bd_addr_t cmd_bleda;   /* BLE Device Address */
+/* 40s timeout on BLE state machine actions */
+#define BLE_OPERATION_TIMEOUT 40
 
-static bool get_server = false;
-static bool connection_open = false;
-static bool ble_operation_in_progress = false;
-static bool outstanding_timer = false;
+struct _action {
+    uint16_t cmd_len;
+    uint8_t cmd_val[20];
+    esp_bd_addr_t cmd_bleda;   /* BLE Device Address */
 
+    bool get_server;
+    bool connection_open;
+    bool ble_operation_in_progress;
+    int ble_operation_time;
+    bool outstanding_timer;
+};
+
+/* Current TRV command being sent to EQ-3 */
+struct _action current_action = {
+    .cmd_len = 0,
+    .cmd_val[0] = 0,
+    .get_server = false,
+    .connection_open = false,
+    .ble_operation_in_progress = false,
+    .ble_operation_time = 0,
+    .outstanding_timer = false,
+};
+
+/* Start a 1 second timer */
 static void runtimer(void){
-    if(outstanding_timer == false){
-        outstanding_timer = true; 
+    if(current_action.outstanding_timer == false){
+        current_action.outstanding_timer = true;
         start_timer(1000);
     }
 }
@@ -230,10 +250,9 @@ static void gattc_command_error(esp_bd_addr_t bleda, char *error){
 /* For consideration:
  * do we need to search for the service before attempting to set the characteristic. This will likely have an impact on the EQ-3 battery life
  * although we only comunicate when we need to change something which will likely result in the motor turning which will have a much bigger impact
- * on the batteries. If we use polling (e.g. repeated unboost to poll the current status) this could be something to think about */
+ * on the batteries. If we use polling (e.g. repeated unlock to poll the current status) this could be something to think about */
 
-static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param)
-{
+static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param){
     uint16_t conn_id = 0;
     esp_ble_gattc_cb_param_t *p_data = (esp_ble_gattc_cb_param_t *)param;
 
@@ -275,11 +294,11 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         /* Profile connection opened */
         if (param->open.status != ESP_GATT_OK){
             ESP_LOGE(GATTC_TAG, "open failed, status %d", p_data->open.status); 
-            gattc_command_error(cmd_bleda, "TRV not available");
+            gattc_command_error(current_action.cmd_bleda, "TRV not available");
             break;
         }else{
             ESP_LOGI(GATTC_TAG, "open success");
-            connection_open = true;
+            current_action.connection_open = true;
         }
         break;
     case ESP_GATTC_CLOSE_EVT:
@@ -288,7 +307,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             ESP_LOGE(GATTC_TAG, "close failed, status %d", p_data->close.status);
         }else{
             ESP_LOGI(GATTC_TAG, "close success");
-            connection_open = false;
+            current_action.connection_open = false;
         }
         /* Wait before we connect to the next EQ-3 to send a queued command */
         runtimer();
@@ -319,7 +338,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             }
           }
           if(checkcount == ESP_UUID_LEN_128) {
-            get_server = true;
+            current_action.get_server = true;
             ESP_LOGI(GATTC_TAG, "Found EQ-3");
             gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
             gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
@@ -335,7 +354,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             break;
         }
         ESP_LOGI(GATTC_TAG, "Search Complete - get req characteristics");
-        if (get_server){
+        if (current_action.get_server == true){
             uint16_t count = 0;
             esp_gatt_status_t status = esp_ble_gattc_get_attr_count( gattc_if, p_data->search_cmpl.conn_id, ESP_GATT_DB_CHARACTERISTIC, gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
                                                                      gl_profile_tab[PROFILE_A_APP_ID].service_end_handle, INVALID_HANDLE, &count);
@@ -450,7 +469,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             /* Now we're ready to send our command to the EQ-3 trv */
             ESP_LOGI(GATTC_TAG, "Send eq3 command");
             esp_ble_gattc_write_char( gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, gl_profile_tab[PROFILE_A_APP_ID].char_handle,
-                                  cmd_len, cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
+                                  current_action.cmd_len, current_action.cmd_val, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
         }
         break;
     }
@@ -579,13 +598,13 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         break;
     case ESP_GATTC_DISCONNECT_EVT:
         /* Disconnected */
-        get_server = false;
+        current_action.get_server = false;
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, status = %d", p_data->disconnect.reason);
         //esp_ble_gattc_app_unregister(gl_profile_tab[PROFILE_A_APP_ID].gattc_if);
-        ble_operation_in_progress = false;
+        current_action.ble_operation_in_progress = false;
 
         if(p_data->disconnect.reason != ESP_GATT_CONN_TERMINATE_LOCAL_HOST)
-            gattc_command_error(cmd_bleda, "Device unavailable");
+            gattc_command_error(current_action.cmd_bleda, "Device unavailable");
 
         break;
     default:
@@ -713,7 +732,7 @@ static void uart_task()
 /* Schedule a reboot after commands have completed or very shortly */ 
 void schedule_reboot(void){
     reboot_requested = true;
-    if(ble_operation_in_progress == false)
+    if(current_action.ble_operation_in_progress == false)
         runtimer();
 }
 
@@ -736,12 +755,14 @@ int handle_request(char *cmdstr){
     if(start == false && strncmp((const char *)cmdptr, "settime", 7) == 0){
         start = true;
 
-        if(cmdptr[8] != 0 && strlen(cmdptr + 8) < 12){
+        if(cmdptr[7] != 0 && strlen(cmdptr + 8) < 12){
             //free(newcmd);
             /* TODO more validation of time argument */
             ESP_LOGI(GATTC_TAG, "Invalid time argument %s", cmdptr + 8);
             return -1;
         }
+        /* Numerals following the command are used to set the time. If there are none the
+         * valve time will be set according to the ntp time if is is synchronised */
         if(isalnum((int)cmdptr[8])){
             char hexdigit[3];
             int dig;
@@ -843,7 +864,6 @@ int handle_request(char *cmdstr){
         int parm;
 
         eq3_add_log(cmdstr);
-        
         newcmd = malloc(sizeof(struct eq3cmd));
 
         // TODO - what if malloc fails?
@@ -871,7 +891,7 @@ int handle_request(char *cmdstr){
     
         enqueue_command(newcmd);
 
-        if(ble_operation_in_progress == false){
+        if(current_action.ble_operation_in_progress == false){
             /* Only schedule the command if ble is currently idle */
             //if(timer_running() == false){
             //    ESP_LOGI(GATTC_TAG, "Timer not running so starting it");
@@ -885,23 +905,19 @@ int handle_request(char *cmdstr){
     return 0;
 }
 
-static void enqueue_command(struct eq3cmd *newcmd)
-{
+/* Enqueue a command into the list */
+static void enqueue_command(struct eq3cmd *newcmd){
     struct eq3cmd *qwalk = cmdqueue;
     struct eq3cmd *lastCommandForDevice = NULL;
 
-    if(cmdqueue == NULL)
-    {
+    if(cmdqueue == NULL){
         cmdqueue = newcmd;
         ESP_LOGI(GATTC_TAG, "Add queue head");
-    }
-    else
-    {
+    }else{
         if(memcmp(qwalk->bleda, newcmd->bleda, sizeof(esp_bd_addr_t)) == 0)
             lastCommandForDevice = qwalk;
 
-        while(qwalk->next != NULL)
-        {
+        while(qwalk->next != NULL){
             qwalk = qwalk->next;
             if(memcmp(qwalk->bleda, newcmd->bleda, sizeof(esp_bd_addr_t)) == 0)
                 lastCommandForDevice = qwalk;
@@ -927,64 +943,62 @@ static int setup_command(void){
         int parm;
         switch(cmdqueue->cmd){
         case EQ3_SETTIME:
-            cmd_val[0] = PROP_INFO_QUERY;
+            current_action.cmd_val[0] = PROP_INFO_QUERY;
             for(parm=0; parm < SET_TIME_BYTES; parm++)
-                cmd_val[1 + parm] = cmdqueue->cmdparms[parm];
-            cmd_len = 1 + SET_TIME_BYTES;
+                current_action.cmd_val[1 + parm] = cmdqueue->cmdparms[parm];
+            current_action.cmd_len = 1 + SET_TIME_BYTES;
             break;
         case EQ3_BOOST:
-            cmd_val[0] = PROP_BOOST;
-            cmd_val[1] = 0x01;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_BOOST;
+            current_action.cmd_val[1] = 0x01;
+            current_action.cmd_len = 2;
             break;
         case EQ3_UNBOOST:
-            cmd_val[0] = PROP_BOOST;
-            cmd_val[1] = 0x00;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_BOOST;
+            current_action.cmd_val[1] = 0x00;
+            current_action.cmd_len = 2;
             break;
         case EQ3_AUTO:
-            cmd_val[0] = PROP_MODE_WRITE;
-            cmd_val[1] = 0x00;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_MODE_WRITE;
+            current_action.cmd_val[1] = 0x00;
+            current_action.cmd_len = 2;
             break;
         case EQ3_MANUAL:
-            cmd_val[0] = PROP_MODE_WRITE;
-            cmd_val[1] = 0x40;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_MODE_WRITE;
+            current_action.cmd_val[1] = 0x40;
+            current_action.cmd_len = 2;
             break;
         case EQ3_SETTEMP:
-            cmd_val[0] = PROP_TEMPERATURE_WRITE;
-            cmd_val[1] = cmdqueue->cmdparms[0];
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_TEMPERATURE_WRITE;
+            current_action.cmd_val[1] = cmdqueue->cmdparms[0];
+            current_action.cmd_len = 2;
             break;
         case EQ3_OFFSET:
-            cmd_val[0] = PROP_OFFSET;
-            cmd_val[1] = cmdqueue->cmdparms[0];
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_OFFSET;
+            current_action.cmd_val[1] = cmdqueue->cmdparms[0];
+            current_action.cmd_len = 2;
             break;
         case EQ3_LOCK:
-            cmd_val[0] = PROP_LOCK;
-            cmd_val[1] = 1;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_LOCK;
+            current_action.cmd_val[1] = 1;
+            current_action.cmd_len = 2;
             break;
         case EQ3_UNLOCK:
-            cmd_val[0] = PROP_LOCK;
-            cmd_val[1] = 0;
-            cmd_len = 2;
+            current_action.cmd_val[0] = PROP_LOCK;
+            current_action.cmd_val[1] = 0;
+            current_action.cmd_len = 2;
             break;
         default:
             ESP_LOGI(GATTC_TAG, "Can't handle that command yet");
             break;
         }
-        memcpy(cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
+        memcpy(current_action.cmd_bleda, cmdqueue->bleda, sizeof(esp_bd_addr_t));
         //struct eq3cmd *delcmd = cmdqueue;
         //cmdqueue = cmdqueue->next;
         //free(delcmd);
     }
     return 0;
 }
-
-#define REQUEUE_RETRY
 
 static int command_complete(bool success){
     bool deletehead = false;
@@ -993,11 +1007,9 @@ static int command_complete(bool success){
     if(success == true){
         deletehead = true;
         rc = EQ3_CMD_DONE;
-    }
-    else if(cmdqueue == NULL) {
+    }else if(cmdqueue == NULL){
         rc = EQ3_CMD_DONE;
-    }
-    else{
+    }else{
         /* Command failed - retry if there are any retries left */
         
         /* Normal operation - retry the same command until all attempts are exhausted 
@@ -1041,9 +1053,10 @@ static int run_command(void){
         ESP_LOGI(GATTC_TAG, "Sending next command");
         setup_command();
         ESP_LOGI(GATTC_TAG, "Open virtual server connection for BLE device:");
-        esp_log_buffer_hex(GATTC_TAG, cmd_bleda, sizeof(esp_bd_addr_t));
-        ble_operation_in_progress = true;
-        esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, cmd_bleda, 0x00, true);
+        esp_log_buffer_hex(GATTC_TAG, current_action.cmd_bleda, sizeof(esp_bd_addr_t));
+        current_action.ble_operation_in_progress = true;
+        current_action.ble_operation_time = 0;
+        esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, current_action.cmd_bleda, 0x00, true);
         /*
         #define BLE_ADDR_PUBLIC         0x00
         #define BLE_ADDR_RANDOM         0x01
@@ -1107,13 +1120,15 @@ void wifidone(int rc){
         ESP_LOGI(GATTC_TAG, "WiFi network connected\n");
         
         /* If ntp is configured start up sntp and synchronise the time */
-        char *ntpserver = getntpserver();
+        char *ntpserver = getntpserver(0);
         char *ntptimezone = getntptimezone();
         if(ntp_enabled() == true && ntpserver[0] != 0){
             ESP_LOGI(GATTC_TAG, "Initializing SNTP");
             sntp_setoperatingmode(SNTP_OPMODE_POLL);
         
             sntp_setservername(0, ntpserver);
+            ntpserver = getntpserver(1);
+            sntp_setservername(1, ntpserver);
             sntp_init();
         
             // wait for time to be set
@@ -1145,6 +1160,11 @@ void wifidone(int rc){
         if(server_started == false){
             if(connect_server(url, usr, pass, id) == 0)
                 server_started = true;
+        }
+        /* If next command is RESTART_WIFI then cancel it */
+        if(nextcmd.cmd == RESTART_WIFI){
+            nextcmd.countdown = 0;
+            nextcmd.running = false;
         }
     }
     return;
@@ -1191,7 +1211,9 @@ void app_main(){
         return;
     }
 
+    /* Initialise the circular log */
     eq3_log_init();
+    /* Add a boot record */
     eq3_add_log((char *)"Boot");
 
     /* Start uart task and create msg and timer queues */ 
@@ -1217,6 +1239,9 @@ void app_main(){
         ESP_LOGE(GATTC_TAG, "%s gattc app register failed, error code = %x\n", __func__, ret);
     }
     
+    /* No queued commands */
+    nextcmd.running = false;
+
     if(wifistartdelay == true){
         setnextcmd(START_WIFI, 5);
         runtimer();
@@ -1242,15 +1267,15 @@ void app_main(){
 
         /* Timer message handling */
         if(xQueueReceive(timer_queue, &evt, 0)){
-            ESP_LOGI(GATTC_TAG, "Timer0 event (nextcmd.running=%d, ble_operation_in_progress=%d)", nextcmd.running, ble_operation_in_progress);
-            outstanding_timer = false;
+            ESP_LOGI(GATTC_TAG, "Timer0 event (nextcmd.running=%d, nextcmd.countdown=%d, ble_operation_in_progress=%d)", nextcmd.running, nextcmd.countdown, current_action.ble_operation_in_progress);
+            current_action.outstanding_timer = false;
             
             if(nextcmd.running == true){
                 //ESP_LOGI(GATTC_TAG, "countdown is %d\n", nextcmd.countdown);
                 if(--nextcmd.countdown <= 0){
                     switch(nextcmd.cmd){
                         case EQ3_DISCONNECT:
-                            if(connection_open == true){
+                            if(current_action.connection_open == true){
                                 ESP_LOGI(GATTC_TAG, "Close virtual server connection");
                                 esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
                             }
@@ -1271,15 +1296,23 @@ void app_main(){
                     runtimer();
                 }
             }else{
-                if(ble_operation_in_progress == false){
+                if(current_action.ble_operation_in_progress == false){
                     run_command();
                     /* If there are no outstanding commands we can reboot if required */
-                    if(ble_operation_in_progress == false && reboot_requested == true){
+                    if(current_action.ble_operation_in_progress == false && reboot_requested == true){
                         esp_restart();
                     }
                 }else{
-                    /* Do we need a failsafe check here in case the BLE state machine is stuck? */
-                    runtimer();
+                    if(++current_action.ble_operation_time >= BLE_OPERATION_TIMEOUT){
+                        ESP_LOGE(GATTC_TAG, "BLE operation timed out\n");
+                        current_action.ble_operation_in_progress = false;
+                        current_action.ble_operation_time = 0;
+                        gattc_command_error(current_action.cmd_bleda, "BLE system failure");
+                        //run_command();
+                    }else{
+                        /* Restart the timer */
+                        runtimer();
+                    }
                 }
             }
         }

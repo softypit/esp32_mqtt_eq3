@@ -1,0 +1,30 @@
+menu "ESP32_MQTT_EQ3 Configuration"
+
+    config ENABLE_AP_OVERRIDE_GPIO
+        bool "Enable boot mode GPIO"
+        default y
+
+    config BOOTWIFI_OVERRIDE_GPIO
+        int "GPIO to force boot into AP setup mode"
+        default 0
+        depends on ENABLE_AP_OVERRIDE_GPIO
+
+    config ENABLE_STATUS_LED
+        bool "Provide status LED indicating AP mode"
+        default y
+
+    config STATUS_LED_GPIO
+        int "GPIO of ESP32 status LED"
+        default 2
+        depends on ENABLE_STATUS_LED
+
+    config APMODE_USE_SSID_PASSWORD
+        bool "Use WPA2 for AP mode"
+        default y
+
+    config APMODE_PASSWORD
+        string "WPA2 password"
+        default "password"
+        depends on APMODE_USE_SSID_PASSWORD
+
+endmenu

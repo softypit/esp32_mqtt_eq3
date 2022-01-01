@@ -1,0 +1,113 @@
+name: build
+on: [push, pull_request]
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install packages
+      run: sudo apt-get install libmbedtls-dev
+    - name: make
+      run: make test test++ IPV6=0
+    - name: openssl
+      run: make test SSL=OPENSSL IPV6=0
+    - name: unamalgamated
+      run: make unamalgamated
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install packages
+      run: sudo apt-get install libmbedtls-dev
+    - name: examples
+      run: make clean examples
+  macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install packages
+      run: HOMEBREW_NO_AUTO_UPDATE=1 brew install jq mbedtls openssl
+    - name: make
+      run: make test++ upload-coverage IPV6=0
+    - name: openssl
+      run: make test SSL=OPENSSL IPV6=0 OPENSSL=`echo /usr/local/Cellar/openssl*/*`
+    - name: exports
+      run: make mg_prefix
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: vc98
+      run: make vc98
+    - name: vc2017
+      run: make vc2017
+    - name: mingw
+      run: make mingw
+    - name: mingw++
+      run: make mingw++
+  arm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: arm
+      run: make arm
+  esp32:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: esp32
+      run: make -C examples/esp32 build
+  esp8266:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: esp8266
+      run: make -C examples/esp8266 build
+  stm32-freertos-tcp:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: stm32-freertos-tcp
+      run: make -C examples/stm32-freertos-tcp build
+  stm32-nucleo-f746z:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: stm32-nucleo-f746z
+      run: make -C examples/stm32-nucleo-f746z build
+  stm32-nucleo-f429z:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: stm32-nucleo-f429z
+      run: make -C examples/stm32-nucleo-f429z build
+  stm32-nucleo-h743z:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: stm32-nucleo-h743z
+      run: make -C examples/stm32-nucleo-h743z build
+  nxp-mimxrt1020-azurertos:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: nxp-mimxrt1020-azurertos
+      run: make -C examples/nxp-mimxrt1020-azurertos build
+  nxp-frdmk66f-freertos:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: nxp-frdmk66f-freertos
+      run: make -C examples/nxp-frdmk66f-freertos build
+  nxp-lpcxpresso54s018m-freertos:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: nxp-lpcxpresso54s018m-freertos
+      run: make -C examples/nxp-lpcxpresso54s018m-freertos build
+  nxp-mimxrt1020-freertos:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: nxp-mimxrt1020-freertos
+      run: make -C examples/nxp-mimxrt1020-freertos build
