@@ -567,22 +567,29 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             ESP_LOGI(GATTC_TAG, "eq3 got response 0x%x, 0x%x\n", p_data->notify.value[0], p_data->notify.value[1]);
         }
 
+        if(ESP_OK != esp_ble_gattc_unregister_for_notify (gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, gl_profile_tab[PROFILE_A_APP_ID].resp_char_handle)){
+            ESP_LOGI(GATTC_TAG, "eq3 failed to unreg for notify\n");
+            /* Notify the successful command */
+            command_complete(true);
+            /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
+            setnextcmd(EQ3_DISCONNECT, 2);
+            runtimer();
+        }
+
+    break;
+    case ESP_GATTC_UNREG_FOR_NOTIFY_EVT: {
+        /* We should now be unregistered for notification */
+        if (p_data->unreg_for_notify.status != ESP_GATT_OK){
+            ESP_LOGE(GATTC_TAG, "UNREG FOR NOTIFY failed: error status = %d", p_data->unreg_for_notify.status);
+            //break;
+            /* Continue to disconnect */
+        }
+        ESP_LOGI(GATTC_TAG, "eq3 unregistered for notification\n");
         /* Notify the successful command */
         command_complete(true);
         /* 2 second delay until disconnect to allow any background GATTC stuff to complete */
         setnextcmd(EQ3_DISCONNECT, 2);
         runtimer();
-
-    break;
-    case ESP_GATTC_UNREG_FOR_NOTIFY_EVT: {
-        /* Oops - this won't happen
-         * forgot to call unregister-for-notify before disconnecting - may need to revisit if it causes problems */
-        if (p_data->unreg_for_notify.status != ESP_GATT_OK){
-            ESP_LOGE(GATTC_TAG, "UNREG FOR NOTIFY failed: error status = %d", p_data->unreg_for_notify.status);
-            break;
-        }
-
-        esp_ble_gattc_close (gl_profile_tab[PROFILE_A_APP_ID].gattc_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id);
 
         break;
     }  
